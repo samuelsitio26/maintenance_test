@@ -13,7 +13,7 @@
 	let error = null;
 
 	async function loadData() {
-		loading = true;
+		loading = true; 
 		try {
 			const response = await fetch(
 				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,nama_kategori.parent_category',
