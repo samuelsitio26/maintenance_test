@@ -1,7 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
 	import StockTable from '$lib/components/inventory/StockTable.svelte';
-	import StockFilter from '$lib/components/inventory/StockFilter.svelte';
 	import StockStats from '$lib/components/inventory/StockStats.svelte';
 	import ConfirmDialog from '$lib/components/inventory/confirm/ConfirmDialog.svelte';
 	import AddToStockDialog from '$lib/components/inventory/confirm/AddToStockDialog.svelte';
@@ -29,6 +28,9 @@
 
 	// Barang yang sudah masuk stok tidak ditampilkan lagi
 	let addedToStockIds = [];
+
+	let showRentalDropdown = false;
+	let searchTerm = '';
 
 	async function loadData() {
 		loading = true;
@@ -151,7 +153,8 @@
 	function changePage(page) {
 		if (page < 1 || page > Math.ceil(totalItems / itemsPerPage)) return;
 		currentPage = page;
-		updatePaginatedItems($stockStore.items);
+		// Update dengan filtered items untuk paginasi yang benar
+		updatePaginatedItems(filteredReceivedItems);
 	}
 
 	function addToStock(item) {
@@ -346,20 +349,63 @@
 		editStockDialog = { show: false, selectedItem: null };
 	}
 
+	// Clear search function
+	function clearSearch() {
+		searchTerm = '';
+	}
+
 	onMount(loadData);
 
 	$: ({ items, loading: storeLoading } = $stockStore);
 	$: isLoading = loading || storeLoading;
-	$: updatePaginatedItems(items);
 
-	$: filteredPaginatedItems = paginatedItems.filter(
+	// Filter untuk Barang di Stok
+	$: filteredStockedItems = stockedItems.filter(item => {
+		if (!searchTerm) return true;
+		const search = searchTerm.toLowerCase();
+		return (
+			item.name?.toLowerCase().includes(search) ||
+			item.parent_category?.toLowerCase().includes(search) ||
+			item.sub_category?.toLowerCase().includes(search) ||
+			item.description?.toLowerCase().includes(search) ||
+			item.status?.toLowerCase().includes(search) ||
+			item.stockIn?.toString().includes(search)
+		);
+	});
+
+	// Filter untuk Barang Diterima (base filter tanpa pagination)
+	$: filteredReceivedItems = items.filter(
 		(item) =>
-			!stockedItems.some((stock) => stock.name === item.name) && !addedToStockIds.includes(item.id)
+			!stockedItems.some((stock) => stock.name === item.name) &&
+			!addedToStockIds.includes(item.id) &&
+			(
+				!searchTerm ||
+				item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				item.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				item.units?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				item.quantity?.toString().includes(searchTerm.toLowerCase())
+			)
 	);
+
+	// Update total items berdasarkan hasil filter
+	$: totalFilteredItems = filteredReceivedItems.length;
+
+	// Paginated items berdasarkan hasil filter
+	$: {
+		const start = (currentPage - 1) * itemsPerPage;
+		const end = start + itemsPerPage;
+		paginatedItems = filteredReceivedItems.slice(start, end);
+		
+		// Reset ke halaman 1 jika current page melebihi total pages setelah filter
+		const maxPages = Math.ceil(totalFilteredItems / itemsPerPage);
+		if (currentPage > maxPages && maxPages > 0) {
+			currentPage = 1;
+		}
+	}
 
 	// Helper untuk paginasi dengan "..."
 	function getPageNumbers() {
-		const totalPages = Math.ceil(totalItems / itemsPerPage);
+		const totalPages = Math.ceil(totalFilteredItems / itemsPerPage);
 		const maxPagesToShow = 10;
 		let pages = [];
 
@@ -367,7 +413,7 @@
 			for (let i = 1; i <= totalPages; i++) pages.push(i);
 		} else {
 			if (currentPage <= 6) {
-				pages = [...Array(maxPagesToShow).keys()].map((i) => i + 1);
+				pages = [...Array(Math.min(maxPagesToShow, totalPages)).keys()].map((i) => i + 1);
 			} else if (currentPage >= totalPages - 4) {
 				pages = [...Array(maxPagesToShow).keys()].map((i) => totalPages - maxPagesToShow + i + 1);
 			} else {
@@ -387,15 +433,50 @@
 		}
 		return pages;
 	}
-
-	let showRentalDropdown = false;
 </script>
 
 <div class="space-y-6 p-6 bg-white-100 min-h-screen">
+	<!-- Search Filter - Diperbaiki dengan clear button -->
+	<div class="mb-4">
+		<label class="block text-sm font-medium text-gray-700 mb-2">Pencarian Barang</label>
+		<div class="relative">
+			<input
+				type="text"
+				bind:value={searchTerm}
+				placeholder="Cari di semua tabel: nama barang, kategori, departemen, status, deskripsi..."
+				class="w-full p-3 pl-10 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+			/>
+			<!-- Search Icon -->
+			<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+				<svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+				</svg>
+			</div>
+			<!-- Clear Button -->
+			{#if searchTerm}
+				<button
+					on:click={clearSearch}
+					class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</div>
+		{#if searchTerm}
+			<div class="mt-2 text-sm text-gray-600">
+				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - 
+				Barang di Stok: {filteredStockedItems.length}, 
+				Barang Diterima: {totalFilteredItems}
+			</div>
+		{/if}
+	</div>
+
 	<!-- Toast Notification -->
 	{#if toast.show}
 		<div
-			class="fixed top-4 right-4 p-4 rounded-lg shadow-lg transition-opacity duration-300"
+			class="fixed top-4 right-4 p-4 rounded-lg shadow-lg transition-opacity duration-300 z-50"
 			class:bg-green-500={toast.type === 'success'}
 			class:bg-red-500={toast.type === 'error'}
 			class:text-white={true}
@@ -486,8 +567,7 @@
 	<!-- Stats -->
 	<StockStats stats={$stockStats} />
 
-	<!-- Filters -->
-	<StockFilter />
+	<!-- Hapus Filters (StockFilter) -->
 
 	<!-- Error message -->
 	{#if error}
@@ -503,115 +583,155 @@
 		</div>
 	{:else}
 		<!-- Tabel Barang di Stok -->
-		<h2 class="text-xl font-bold text-gray-900 mt-6">Barang di Stok</h2>
-		{#if stockedItems.length > 0}
-			<div class="bg-white rounded-lg shadow p-6 overflow-x-auto">
-				<table class="w-full border-collapse">
-					<thead>
-						<tr class="bg-gray-100">
-							<th class="p-3 text-left">Nama</th>
-							<th class="p-3 text-left">Kategori</th>
-							<th class="p-3 text-left">Sub Kategori</th>
-							<th class="p-3 text-left">Deskripsi</th>
-							<th class="p-3 text-left">Stok</th>
-							<th class="p-3 text-left">Status</th>
-							<th class="p-3 text-left">Aksi</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each stockedItems as item}
-							<tr class="border-b hover:bg-gray-50">
-								<td class="p-3">{item.name}</td>
-								<td class="p-3">{item.parent_category}</td>
-								<td class="p-3">{item.sub_category}</td>
-								<td class="p-3">{item.description}</td>
-								<td class="p-3">{item.stockIn}</td>
-								<td class="p-3">
-									{#if item.status === 'Ready'}
-										<span class="px-2 py-1 rounded text-sm bg-green-100 text-green-800">Ready</span>
-									{:else if item.status === 'Low Stock'}
-										<span class="px-2 py-1 rounded text-sm bg-yellow-100 text-yellow-800"
-											>Low Stock</span
-										>
-									{:else if item.status === 'Out of Stock'}
-										<span class="px-2 py-1 rounded text-sm bg-gray-200 text-gray-800"
-											>Out of Stock</span
-										>
-									{:else}
-										<span class="px-2 py-1 rounded text-sm bg-red-100 text-red-800"
-											>{item.status}</span
-										>
-									{/if}
-								</td>
-								<td class="p-3 space-x-2">
-									<button
-										on:click={() => editStock(item)}
-										class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-									>
-										Edit
-									</button>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+		<div class="mt-6">
+			<div class="flex justify-between items-center mb-4">
+				<h2 class="text-xl font-bold text-gray-900">Barang di Stok</h2>
+				<div class="text-sm text-gray-600">
+					{filteredStockedItems.length} dari {stockedItems.length} barang
+				</div>
 			</div>
-		{:else}
-			<div class="bg-white rounded-lg shadow p-6 text-center text-gray-600">
-				Tidak ada barang di stok.
-			</div>
-		{/if}
+			{#if filteredStockedItems.length > 0}
+				<div class="bg-white rounded-lg shadow overflow-hidden">
+					<div class="overflow-x-auto">
+						<table class="w-full border-collapse">
+							<thead>
+								<tr class="bg-gray-50 border-b border-gray-200">
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub Kategori</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deskripsi</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+								</tr>
+							</thead>
+							<tbody class="bg-white divide-y divide-gray-200">
+								{#each filteredStockedItems as item, index}
+									<tr class="hover:bg-gray-50 transition-colors">
+										<td class="p-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
+										<td class="p-4 whitespace-nowrap text-sm text-gray-700">{item.parent_category}</td>
+										<td class="p-4 whitespace-nowrap text-sm text-gray-700">{item.sub_category}</td>
+										<td class="p-4 text-sm text-gray-700 max-w-xs truncate" title={item.description}>{item.description}</td>
+										<td class="p-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{item.stockIn}</td>
+										<td class="p-4 whitespace-nowrap">
+											{#if item.status === 'Ready'}
+												<span class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Ready</span>
+											{:else if item.status === 'Low Stock'}
+												<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Low Stock</span>
+											{:else if item.status === 'Out of Stock'}
+												<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Out of Stock</span>
+											{:else}
+												<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">{item.status}</span>
+											{/if}
+										</td>
+										<td class="p-4 whitespace-nowrap">
+											<button
+												on:click={() => editStock(item)}
+												class="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+											>
+												Edit
+											</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{:else}
+				<div class="bg-white rounded-lg shadow p-8 text-center">
+					<div class="text-gray-400 mb-4">
+						<svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+						</svg>
+					</div>
+					<p class="text-gray-600">
+						{searchTerm ? `Tidak ada barang di stok yang cocok dengan pencarian "${searchTerm}"` : 'Tidak ada barang di stok.'}
+					</p>
+				</div>
+			{/if}
+		</div>
 
 		<!-- Tabel Barang Diterima -->
-		<h2 class="text-xl font-bold text-gray-900 mt-6">Barang Diterima</h2>
-		<StockTable stock={filteredPaginatedItems} {deleteItem} {addToStock} {addedToStockIds} />
-
-		<!-- Paginasi untuk Barang Diterima -->
-		{#if totalItems > 0}
-			<div class="flex justify-between items-center mt-4">
+		<div class="mt-8">
+			<div class="flex justify-between items-center mb-4">
+				<h2 class="text-xl font-bold text-gray-900">Barang Diterima</h2>
 				<div class="text-sm text-gray-600">
-					Menampilkan {(currentPage - 1) * itemsPerPage + 1} - {Math.min(
-						currentPage * itemsPerPage,
-						totalItems
-					)} dari {totalItems} barang
-				</div>
-				<div class="flex space-x-2">
-					<button
-						on:click={() => changePage(currentPage - 1)}
-						disabled={currentPage === 1}
-						class="px-3 py-1 border rounded-md {currentPage === 1
-							? 'bg-gray-200 text-gray-400'
-							: 'bg-white text-gray-700 hover:bg-gray-50'}"
-					>
-						Previous
-					</button>
-					{#each getPageNumbers() as pageNum, i}
-						{#if pageNum === '...'}
-							<span class="px-3 py-1">...</span>
-						{:else}
-							<button
-								on:click={() => changePage(pageNum)}
-								class="px-3 py-1 border rounded-md {currentPage === pageNum
-									? 'bg-blue-600 text-white'
-									: 'bg-white text-gray-700 hover:bg-gray-50'}"
-								disabled={currentPage === pageNum}
-							>
-								{pageNum}
-							</button>
-						{/if}
-					{/each}
-					<button
-						on:click={() => changePage(currentPage + 1)}
-						disabled={currentPage === Math.ceil(totalItems / itemsPerPage)}
-						class="px-3 py-1 border rounded-md {currentPage === Math.ceil(totalItems / itemsPerPage)
-							? 'bg-gray-200 text-gray-400'
-							: 'bg-white text-gray-700 hover:bg-gray-50'}"
-					>
-						Next
-					</button>
+					{totalFilteredItems} dari {items.length} barang
 				</div>
 			</div>
-		{/if}
+			<StockTable stock={paginatedItems} {deleteItem} {addToStock} {addedToStockIds} />
+
+			<!-- Paginasi untuk Barang Diterima -->
+			{#if totalFilteredItems > 0}
+				<div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
+					<div class="text-sm text-gray-600">
+						Menampilkan {Math.min((currentPage - 1) * itemsPerPage + 1, totalFilteredItems)} - {Math.min(
+							currentPage * itemsPerPage,
+							totalFilteredItems
+						)} dari {totalFilteredItems} barang
+						{#if searchTerm}
+							<span class="text-blue-600">(hasil pencarian)</span>
+						{/if}
+					</div>
+					<div class="flex flex-wrap justify-center gap-1">
+						<button
+							on:click={() => changePage(currentPage - 1)}
+							disabled={currentPage === 1}
+							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === 1
+								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+						>
+							← Previous
+						</button>
+						{#each getPageNumbers() as pageNum, i}
+							{#if pageNum === '...'}
+								<span class="px-3 py-2 text-sm text-gray-500">...</span>
+							{:else}
+								<button
+									on:click={() => changePage(pageNum)}
+									class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === pageNum
+										? 'bg-blue-600 text-white border-blue-600'
+										: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+									disabled={currentPage === pageNum}
+								>
+									{pageNum}
+								</button>
+							{/if}
+						{/each}
+						<button
+							on:click={() => changePage(currentPage + 1)}
+							disabled={currentPage === Math.ceil(totalFilteredItems / itemsPerPage)}
+							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === Math.ceil(totalFilteredItems / itemsPerPage)
+								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+						>
+							Next →
+						</button>
+					</div>
+				</div>
+			{:else if searchTerm}
+				<div class="bg-white rounded-lg shadow p-8 text-center">
+					<div class="text-gray-400 mb-4">
+						<svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.44-1.01-5.9-2.618A8 8 0 0112 3c1.572 0 3.047.455 4.28 1.235" />
+						</svg>
+					</div>
+					<p class="text-gray-600 mb-2">
+						Tidak ada barang diterima yang cocok dengan pencarian "<span class="font-semibold">{searchTerm}</span>"
+					</p>
+					<button
+						on:click={clearSearch}
+						class="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+					>
+						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+						Hapus Filter
+					</button>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -634,5 +754,36 @@
 	.group:hover .group-hover\:opacity-100,
 	.group:focus .group-hover\:opacity-100 {
 		opacity: 1;
+	}
+	
+	/* Custom scrollbar untuk tabel */
+	.overflow-x-auto::-webkit-scrollbar {
+		height: 8px;
+	}
+	
+	.overflow-x-auto::-webkit-scrollbar-track {
+		background: #f1f5f9;
+		border-radius: 4px;
+	}
+	
+	.overflow-x-auto::-webkit-scrollbar-thumb {
+		background: #cbd5e1;
+		border-radius: 4px;
+	}
+	
+	.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+		background: #94a3b8;
+	}
+	
+	/* Animasi untuk transisi */
+	.transition-colors {
+		transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+	}
+	
+	/* Highlight search results */
+	.search-highlight {
+		background-color: #fef3c7;
+		padding: 1px 2px;
+		border-radius: 2px;
 	}
 </style>

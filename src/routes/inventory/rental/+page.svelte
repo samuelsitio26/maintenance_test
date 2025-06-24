@@ -13,28 +13,32 @@
 	let selectedItem = null;
 	const UNDO_DURATION = 300000; // 5 menit dalam ms
 
-	// Simulasi data barang rental
+	// Ganti fetchRentalData agar ambil data dari Directus
 	async function fetchRentalData() {
-		// Ganti dengan API Anda jika sudah ada
-		return [
-			{
-				id: 1,
-				nama: 'Hammer Drill',
-				kategori: 'Alat Berat',
-				subKategori: 'Bor',
-				stok: 2,
-				status: 'Dipinjam'
-			},
-			{
-				id: 2,
-				nama: 'Concrete Mixer',
-				kategori: 'Alat Berat',
-				subKategori: 'Mixer',
-				stok: 1,
-				status: 'Dikembalikan',
-				undoUntil: Date.now() + 60000 // contoh: masih bisa undo 1 menit
-			}
-		];
+		try {
+			const response = await fetch(
+				'https://directus.eltamaprimaindo.com/items/rentals?fields=*,barang_id.id,barang_id.Nama,barang_id.StokIn,barang_id.parent_category.parent_category,barang_id.sub_category.nama_sub',
+				{
+					headers: {
+						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
+					}
+				}
+			);
+			if (!response.ok) throw new Error('Gagal mengambil data rental dari Directus');
+			const result = await response.json();
+			return (result.data || []).map((item) => ({
+				id: item.id,
+				nama: item.barang_id?.Nama || '-',
+				kategori: item.barang_id?.parent_category?.parent_category || '-',
+				subKategori: item.barang_id?.sub_category?.nama_sub || '-',
+				stok: item.qty ?? '-', // gunakan qty dari rentals, bukan StokIn dari barang
+				status: item.returned ? 'Dikembalikan' : 'Dipinjam',
+				undoUntil: null // bisa diatur jika ingin fitur undo
+			}));
+		} catch (e) {
+			console.error('Error fetch rental:', e);
+			return [];
+		}
 	}
 
 	onMount(async () => {
@@ -60,7 +64,12 @@
 	}
 
 	function handleReturn(item) {
-		openConfirm(item, 'return');
+		// Redirect ke halaman pengembalian dengan autofill data barang
+		goto('/inventory/pengembalian', {
+			state: {
+				barang: item
+			}
+		});
 	}
 
 	function handleUndo(item) {
@@ -270,6 +279,5 @@
 				</div>
 			</div>
 		</div>
-		
 	{/if}
 </div>
