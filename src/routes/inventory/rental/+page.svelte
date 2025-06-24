@@ -1,6 +1,5 @@
 <script>
 	import { onMount } from 'svelte';
-	import { pemeliharaanService } from '$lib/services/pemeliharaan.js';
 	import { goto } from '$app/navigation';
 
 	let data = [];
@@ -11,9 +10,51 @@
 	let showConfirm = false;
 	let confirmAction = null;
 	let selectedItem = null;
+	let showDetailModal = false;
+	let detailItem = null;
 	const UNDO_DURATION = 300000; // 5 menit dalam ms
+	let reminders = [];
 
-	// Ganti fetchRentalData agar ambil data dari Directus
+	// Function untuk format tanggal DD-MM-YYYY
+	function formatDate(dateStr) {
+		if (!dateStr) return '-';
+		const date = new Date(dateStr);
+		const day = String(date.getDate()).padStart(2, '0');
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const year = date.getFullYear();
+		return `${day}-${month}-${year}`;
+	}
+
+	// Function untuk hitung status pengembalian
+	function calculateReturnStatus(borrowDate, duration, actualReturnDate, returned) {
+		if (!returned) return '-';
+		if (!actualReturnDate) return '-';
+
+		const expectedDate = new Date(borrowDate);
+		expectedDate.setDate(expectedDate.getDate() + duration);
+		const actualDate = new Date(actualReturnDate);
+
+		if (actualDate <= expectedDate) {
+			return { status: 'Tepat Waktu', class: 'bg-green-100 text-green-800' };
+		} else {
+			const diffTime = actualDate - expectedDate;
+			const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+			return {
+				status: `Terlambat (${diffDays} hari)`,
+				class: 'bg-red-100 text-red-800'
+			};
+		}
+	}
+
+	// Function untuk hitung tanggal jatuh tempo
+	function calculateDueDate(borrowDate, duration) {
+		if (!borrowDate || !duration) return '-';
+		const date = new Date(borrowDate);
+		date.setDate(date.getDate() + duration);
+		return formatDate(date.toISOString());
+	}
+
+	// Fetch data dari Directus dengan informasi lengkap
 	async function fetchRentalData() {
 		try {
 			const response = await fetch(
@@ -26,15 +67,37 @@
 			);
 			if (!response.ok) throw new Error('Gagal mengambil data rental dari Directus');
 			const result = await response.json();
-			return (result.data || []).map((item) => ({
-				id: item.id,
-				nama: item.barang_id?.Nama || '-',
-				kategori: item.barang_id?.parent_category?.parent_category || '-',
-				subKategori: item.barang_id?.sub_category?.nama_sub || '-',
-				stok: item.qty ?? '-', // gunakan qty dari rentals, bukan StokIn dari barang
-				status: item.returned ? 'Dikembalikan' : 'Dipinjam',
-				undoUntil: null // bisa diatur jika ingin fitur undo
-			}));
+
+			return (result.data || []).map((item) => {
+				const returnStatus = calculateReturnStatus(
+					item.borrow_date,
+					item.duration,
+					item.actual_return_date,
+					item.returned
+				);
+
+				return {
+					id: item.id,
+					nama: item.barang_id?.Nama || '-',
+					kategori: item.barang_id?.parent_category?.parent_category || '-',
+					subKategori: item.barang_id?.sub_category?.nama_sub || '-',
+					qty: item.qty ?? '-',
+					peminjam: item.borrower || '-',
+					tanggalPinjam: formatDate(item.borrow_date),
+					tanggalJatuhTempo: calculateDueDate(item.borrow_date, item.duration),
+					durasiPinjam: item.duration ? `${item.duration} hari` : '-',
+					tanggalKembaliAktual: item.actual_return_date ? formatDate(item.actual_return_date) : '-',
+					status: item.returned ? 'Dikembalikan' : 'Dipinjam',
+					statusPengembalian: returnStatus,
+					kondisiKembali: item.return_condition || '-',
+					keterangan: item.return_notes || '-',
+					undoUntil: null,
+					// Raw data untuk keperluan lain
+					rawBorrowDate: item.borrow_date,
+					rawDuration: item.duration,
+					rawActualReturnDate: item.actual_return_date
+				};
+			});
 		} catch (e) {
 			console.error('Error fetch rental:', e);
 			return [];
@@ -44,6 +107,7 @@
 	onMount(async () => {
 		try {
 			data = await fetchRentalData();
+			reminders = getReminders(data);
 		} catch (e) {
 			error = e.message || 'Gagal mengambil data';
 		} finally {
@@ -70,6 +134,16 @@
 				barang: item
 			}
 		});
+	}
+
+	function handleViewDetail(item) {
+		detailItem = item;
+		showDetailModal = true;
+	}
+
+	function closeDetailModal() {
+		showDetailModal = false;
+		detailItem = null;
 	}
 
 	function handleUndo(item) {
@@ -120,6 +194,24 @@
 		const sec = Math.floor((ms % 60000) / 1000);
 		return `(${min}:${sec.toString().padStart(2, '0')})`;
 	}
+
+	function getReminders(rentals) {
+		const today = new Date();
+		const besok = new Date(today);
+		besok.setDate(today.getDate() + 1);
+
+		return rentals.filter((item) => {
+			if (item.status !== 'Dipinjam') return false;
+			// tanggalJatuhTempo format: dd-mm-yyyy
+			const [day, month, year] = item.tanggalJatuhTempo.split('-');
+			const dueDate = new Date(`${year}-${month}-${day}`);
+			return (
+				dueDate.getFullYear() === besok.getFullYear() &&
+				dueDate.getMonth() === besok.getMonth() &&
+				dueDate.getDate() === besok.getDate()
+			);
+		});
+	}
 </script>
 
 <div class="space-y-6">
@@ -168,6 +260,21 @@
 		</div>
 	{/if}
 
+	<!-- Reminder for due rentals -->
+	{#if reminders.length > 0}
+		<div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4 rounded">
+			<strong class="block mb-2">Pengingat:</strong>
+			<p class="mb-2">Segera lakukan pengembalian untuk alat berikut yang jatuh tempo besok:</p>
+			<ul class="list-disc pl-5">
+				{#each reminders as reminder}
+					<li>
+						{reminder.nama} (Peminjam: {reminder.peminjam}) - Jatuh tempo: {reminder.tanggalJatuhTempo}
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
 	<!-- Table -->
 	{#if loading}
 		<div class="flex justify-center items-center h-64">
@@ -180,36 +287,60 @@
 			<p class="text-xs mt-1">Belum ada data rental yang dibuat</p>
 		</div>
 	{:else}
-		<div class="overflow-hidden shadow-sm rounded-lg border border-gray-200">
+		<div class="overflow-x-auto shadow-sm rounded-lg border border-gray-200">
 			<table class="min-w-full divide-y divide-gray-200">
 				<thead class="bg-gray-50">
 					<tr>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
 							>No</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-							>Nama</th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Nama Barang</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
 							>Kategori</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-							>Sub Kategori</th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Peminjam</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-							>Stok</th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Qty</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Tgl Pinjam</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Jatuh Tempo</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Durasi</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Tgl Kembali</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
 							>Status</th
 						>
 						<th
-							class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Status Pengembalian</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+							>Kondisi</th
+						>
+						<th
+							class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
 							>Aksi</th
 						>
 					</tr>
@@ -217,36 +348,92 @@
 				<tbody class="bg-white divide-y divide-gray-200">
 					{#each data as item, i}
 						<tr class="hover:bg-gray-50">
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{i + 1}</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.nama}</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.kategori}</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.subKategori}</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.stok}</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{i + 1}</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium"
+								>{item.nama}</td
+							>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+								<div class="text-sm">{item.kategori}</div>
+								<div class="text-xs text-gray-500">{item.subKategori}</div>
+							</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{item.peminjam}</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+								>{item.qty}</td
+							>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{item.tanggalPinjam}</td
+							>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900"
+								>{item.tanggalJatuhTempo}</td
+							>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{item.durasiPinjam}</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900"
+								>{item.tanggalKembaliAktual}</td
+							>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
 								<span
-									class="px-2 py-1 rounded text-xs font-semibold {item.status === 'Dipinjam'
+									class="px-2 py-1 rounded-full text-xs font-semibold {item.status === 'Dipinjam'
 										? 'bg-yellow-100 text-yellow-800'
 										: 'bg-green-100 text-green-800'}"
 								>
 									{getStatusLabel(item.status)}
 								</span>
 							</td>
-							<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 flex gap-2">
-								{#if item.status === 'Dipinjam'}
-									<button
-										class="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-										on:click={() => handleReturn(item)}
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+								{#if item.statusPengembalian && item.statusPengembalian.status !== '-'}
+									<span
+										class="px-2 py-1 rounded-full text-xs font-semibold {item.statusPengembalian
+											.class}"
 									>
-										Kembalikan
-									</button>
-								{:else if canUndo(item)}
-									<button
-										class="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-										on:click={() => handleUndo(item)}
-									>
-										Batalkan Pengembalian {getUndoCountdown(item)}
-									</button>
+										{item.statusPengembalian.status}
+									</span>
+								{:else}
+									<span class="text-gray-400">-</span>
 								{/if}
+							</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+								{#if item.kondisiKembali !== '-'}
+									<span
+										class="px-2 py-1 rounded text-xs font-medium {item.kondisiKembali === 'Baik'
+											? 'bg-green-100 text-green-700'
+											: item.kondisiKembali === 'Rusak'
+												? 'bg-red-100 text-red-700'
+												: 'bg-yellow-100 text-yellow-700'}"
+									>
+										{item.kondisiKembali}
+									</span>
+								{:else}
+									<span class="text-gray-400">-</span>
+								{/if}
+							</td>
+							<td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+								<div class="flex gap-1">
+									{#if item.status === 'Dipinjam'}
+										<button
+											class="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+											on:click={() => handleReturn(item)}
+											title="Kembalikan barang"
+										>
+											Kembalikan
+										</button>
+									{:else}
+										<button
+											class="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+											on:click={() => handleViewDetail(item)}
+											title="Lihat detail pengembalian"
+										>
+											Lihat Detail
+										</button>
+										{#if canUndo(item)}
+											<button
+												class="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+												on:click={() => handleUndo(item)}
+												title="Batalkan pengembalian"
+											>
+												Batalkan {getUndoCountdown(item)}
+											</button>
+										{/if}
+									{/if}
+								</div>
 							</td>
 						</tr>
 					{/each}
@@ -280,4 +467,125 @@
 			</div>
 		</div>
 	{/if}
+
+	<!-- Modal Detail Pengembalian -->
+	{#if showDetailModal && detailItem}
+		<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
+			<div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+				<div class="flex justify-between items-center mb-4">
+					<h2 class="text-xl font-bold text-gray-900">Detail Pengembalian</h2>
+					<button class="text-gray-400 hover:text-gray-600 text-2xl" on:click={closeDetailModal}>
+						×
+					</button>
+				</div>
+
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div class="space-y-3">
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Nama Barang</label>
+							<p class="text-lg font-semibold text-gray-900">{detailItem.nama}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Kategori</label>
+							<p class="text-gray-900">{detailItem.kategori}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Sub Kategori</label>
+							<p class="text-gray-900">{detailItem.subKategori}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Peminjam</label>
+							<p class="text-gray-900">{detailItem.peminjam}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Jumlah</label>
+							<p class="text-gray-900">{detailItem.qty}</p>
+						</div>
+					</div>
+
+					<div class="space-y-3">
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Tanggal Pinjam</label>
+							<p class="text-gray-900">{detailItem.tanggalPinjam}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Durasi Pinjam</label>
+							<p class="text-gray-900">{detailItem.durasiPinjam}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Tanggal Jatuh Tempo</label>
+							<p class="text-gray-900">{detailItem.tanggalJatuhTempo}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Tanggal Kembali Aktual</label>
+							<p class="text-gray-900">{detailItem.tanggalKembaliAktual}</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Status Pengembalian</label>
+							{#if detailItem.statusPengembalian && detailItem.statusPengembalian.status !== '-'}
+								<span
+									class="inline-block px-3 py-1 rounded-full text-sm font-semibold {detailItem
+										.statusPengembalian.class}"
+								>
+									{detailItem.statusPengembalian.status}
+								</span>
+							{:else}
+								<p class="text-gray-400">-</p>
+							{/if}
+						</div>
+					</div>
+				</div>
+
+				<div class="mt-6 space-y-3">
+					<div>
+						<label class="block text-sm font-medium text-gray-600">Kondisi Saat Dikembalikan</label>
+						{#if detailItem.kondisiKembali !== '-'}
+							<span
+								class="inline-block px-3 py-1 rounded text-sm font-medium {detailItem.kondisiKembali ===
+								'Baik'
+									? 'bg-green-100 text-green-700'
+									: detailItem.kondisiKembali === 'Rusak'
+										? 'bg-red-100 text-red-700'
+										: 'bg-yellow-100 text-yellow-700'}"
+							>
+								{detailItem.kondisiKembali}
+							</span>
+						{:else}
+							<p class="text-gray-400">-</p>
+						{/if}
+					</div>
+
+					{#if detailItem.keterangan !== '-'}
+						<div>
+							<label class="block text-sm font-medium text-gray-600">Keterangan Tambahan</label>
+							<p class="text-gray-900 bg-gray-50 p-3 rounded-lg">{detailItem.keterangan}</p>
+						</div>
+					{/if}
+				</div>
+
+				<div class="flex justify-end mt-6">
+					<button
+						class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+						on:click={closeDetailModal}
+					>
+						Tutup
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
+
+<style>
+	/* Responsive table styles */
+	@media (max-width: 1200px) {
+		.overflow-x-auto {
+			font-size: 0.875rem;
+		}
+
+		th,
+		td {
+			padding: 0.5rem 0.25rem;
+		}
+	}
+</style>
