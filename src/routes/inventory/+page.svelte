@@ -103,7 +103,6 @@
 				lowStockItems,
 				outOfStockItems
 			});
-
 		} catch (err) {
 			error = err.message;
 			console.error('Load Data Error:', err);
@@ -191,7 +190,9 @@
 <div class="space-y-6 p-6 bg-white-100 min-h-screen">
 	<!-- Search Filter - Diperbaiki dengan clear button -->
 	<div class="mb-4">
-		<label for="search-input" class="block text-sm font-medium text-gray-700 mb-2">Pencarian Barang</label>
+		<label for="search-input" class="block text-sm font-medium text-gray-700 mb-2"
+			>Pencarian Barang</label
+		>
 		<div class="relative">
 			<input
 				id="search-input"
@@ -253,12 +254,8 @@
 	<!-- Header -->
 	<div class="sm:flex sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold text-gray-900">
-				Monitoring Stok Barang
-			</h1>
-			<p class="mt-1 text-sm text-gray-600">
-				Monitor dan lihat status stok barang yang tersedia
-			</p>
+			<h1 class="text-2xl font-bold text-gray-900">Monitoring Stok Barang</h1>
+			<p class="mt-1 text-sm text-gray-600">Monitor dan lihat status stok barang yang tersedia</p>
 		</div>
 		<div class="mt-4 sm:mt-0 flex space-x-3">
 			<div class="relative group">

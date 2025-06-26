@@ -1,6 +1,5 @@
 <script>
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 
 	let rentals = [];
 	let filteredRentals = [];
@@ -15,7 +14,6 @@
 	let showReturnModal = false;
 	let returnComment = '';
 	let returnCondition = 'baik';
-	let pendingApprovals = [];
 
 	// Status options untuk filter
 	const statusOptions = [
@@ -29,8 +27,7 @@
 		{ value: '', label: 'Semua Status Pengembalian' },
 		{ value: 'tepat_waktu', label: 'Tepat Waktu' },
 		{ value: 'terlambat', label: 'Terlambat' },
-		{ value: 'belum_kembali', label: 'Belum Kembali' },
-		{ value: 'pending_approval', label: 'Menunggu Approval' }
+		{ value: 'belum_kembali', label: 'Belum Kembali' }
 	];
 
 	// Kondisi options
@@ -191,9 +188,10 @@
 		filteredRentals = rentals.filter((rental) => {
 			const matchesSearch =
 				!searchTerm ||
-				rental.nama_barang?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				rental.kategori?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				rental.peminjam?.toLowerCase().includes(searchTerm.toLowerCase());
+				rental.barang_nama?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				rental.parent_category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				rental.peminjam?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				rental.departemen?.toLowerCase().includes(searchTerm.toLowerCase());
 
 			const matchesStatus =
 				!statusFilter || rental.status?.toLowerCase() === statusFilter.toLowerCase();
@@ -214,132 +212,149 @@
 		});
 	}
 
-	// Mock data untuk fallback
-	const mockRentals = [
-		{
-			id: 1,
-			nama_barang: 'Laptop Dell Inspiron',
-			kategori: 'Elektronik',
-			peminjam: 'Ahmad Rizki',
-			qty: 1,
-			tanggal_pinjam: '2024-01-15',
-			jatuh_tempo: '2024-01-22',
-			tanggal_kembali: null,
-			status: 'dipinjam',
-			status_pengembalian: 'belum_kembali',
-			kondisi: 'baik',
-			keterangan: 'Untuk project presentation',
-			riwayat: [
-				{ tanggal: '2024-01-15', aktivitas: 'Barang dipinjam', user: 'Ahmad Rizki' },
-				{ tanggal: '2024-01-16', aktivitas: 'Reminder jatuh tempo', user: 'System' }
-			]
-		},
-		{
-			id: 2,
-			nama_barang: 'Proyektor Epson',
-			kategori: 'Elektronik',
-			peminjam: 'Siti Nurhaliza',
-			qty: 1,
-			tanggal_pinjam: '2024-01-10',
-			jatuh_tempo: '2024-01-17',
-			tanggal_kembali: '2024-01-18',
-			status: 'dikembalikan',
-			status_pengembalian: 'terlambat',
-			kondisi: 'baik',
-			keterangan: 'Meeting room presentation',
-			riwayat: [
-				{ tanggal: '2024-01-10', aktivitas: 'Barang dipinjam', user: 'Siti Nurhaliza' },
-				{ tanggal: '2024-01-17', aktivitas: 'Jatuh tempo terlewat', user: 'System' },
-				{
-					tanggal: '2024-01-18',
-					aktivitas: 'Barang dikembalikan (terlambat)',
-					user: 'Siti Nurhaliza'
-				}
-			]
-		},
-		{
-			id: 3,
-			nama_barang: 'Kamera Canon EOS',
-			kategori: 'Elektronik',
-			peminjam: 'Budi Santoso',
-			qty: 1,
-			tanggal_pinjam: '2024-01-20',
-			jatuh_tempo: '2024-01-27',
-			tanggal_kembali: '2024-01-26',
-			status: 'dikembalikan',
-			status_pengembalian: 'tepat_waktu',
-			kondisi: 'baik',
-			keterangan: 'Dokumentasi acara',
-			riwayat: [
-				{ tanggal: '2024-01-20', aktivitas: 'Barang dipinjam', user: 'Budi Santoso' },
-				{
-					tanggal: '2024-01-26',
-					aktivitas: 'Barang dikembalikan tepat waktu',
-					user: 'Budi Santoso'
-				}
-			]
-		}
-	];
-
 	// Function untuk fetch data dari Directus
 	async function fetchRentals() {
 		try {
 			loading = true;
-			const response = await fetch('/api/rentals');
+			const response = await fetch(
+				'https://directus.eltamaprimaindo.com/items/rentals?fields=*,barang_id.id,barang_id.Nama,barang_id.StokIn,barang_id.parent_category.parent_category,barang_id.sub_category.nama_sub',
+				{
+					headers: {
+						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
+					}
+				}
+			);
 
-			if (response.ok) {
-				const data = await response.json();
-				rentals = data.data || [];
-			} else {
-				throw new Error('Failed to fetch from API');
+			if (!response.ok) {
+				throw new Error('Failed to fetch rentals from Directus');
 			}
+
+			const data = await response.json();
+			console.log('Rentals Data:', data.data); // Debug
+
+			// Map data dari Directus
+			rentals = data.data.map((rental) => ({
+				id: rental.id,
+				barang_id: rental.barang_id?.id || null,
+				barang_nama: rental.barang_id?.Nama || '-',
+				parent_category: rental.barang_id?.parent_category?.parent_category || '-',
+				sub_category: rental.barang_id?.sub_category?.nama_sub || '-',
+				stok_tersedia: rental.barang_id?.StokIn || 0,
+				peminjam: rental.peminjam || '-',
+				departemen: rental.departemen || '-',
+				project: rental.project || '-',
+				qty: rental.qty || 0,
+				satuan: rental.satuan || 'pcs',
+				tanggal_pinjam: rental.tanggal_pinjam,
+				jatuh_tempo: rental.jatuh_tempo,
+				tanggal_kembali: rental.tanggal_kembali,
+				status: rental.status || 'dipinjam',
+				status_pengembalian: rental.status_pengembalian || 'belum_kembali',
+				kondisi: rental.kondisi || 'baik',
+				keterangan: rental.keterangan || '-',
+				// Format tanggal untuk tampilan
+				tanggalPinjam: formatDate(rental.tanggal_pinjam),
+				jatuhTempo: formatDate(rental.jatuh_tempo),
+				tanggalKembali: rental.tanggal_kembali ? formatDate(rental.tanggal_kembali) : '-',
+				durasi: calculateDuration(rental.tanggal_pinjam, rental.tanggal_kembali),
+				// Label untuk status
+				statusPengembalianLabel: getStatusPengembalianLabel(rental.status_pengembalian),
+				// Activity timeline
+				activities: [
+					{
+						action: 'Barang dipinjam',
+						date: formatDate(rental.tanggal_pinjam),
+						user: rental.peminjam || 'Unknown',
+						comment: rental.keterangan || null
+					},
+					...(rental.tanggal_kembali
+						? [
+								{
+									action: 'Barang dikembalikan',
+									date: formatDate(rental.tanggal_kembali),
+									user: rental.peminjam || 'Unknown',
+									comment: `Kondisi: ${rental.kondisi || 'baik'}`
+								}
+							]
+						: [])
+				]
+			}));
 		} catch (err) {
-			console.warn('API gagal, menggunakan mock data:', err);
-			rentals = mockRentals;
+			console.error('Error fetching rentals:', err);
+			error = err.message;
+			rentals = [];
 		} finally {
 			loading = false;
 			filterRentals();
 		}
 	}
 
-	// Function untuk ajukan pengembalian barang
-	function submitReturnRequest() {
+	// Function untuk mendapatkan label status pengembalian
+	function getStatusPengembalianLabel(status) {
+		switch (status?.toLowerCase()) {
+			case 'tepat_waktu':
+				return 'Tepat Waktu';
+			case 'terlambat':
+				return 'Terlambat';
+			case 'belum_kembali':
+				return 'Belum Kembali';
+			default:
+				return 'Belum Kembali';
+		}
+	}
+
+	// Function untuk select rental
+	function selectRental(rental) {
+		selectedRental = rental;
+	}
+
+	// Function untuk mengembalikan barang
+	async function handleReturnItem() {
 		if (!selectedRental) return;
 
-		// Update status pengembalian menjadi pending approval
-		const updatedRental = {
-			...selectedRental,
-			status_pengembalian: 'pending_approval',
-			kondisi_pengembalian: returnCondition,
-			keterangan_pengembalian: returnComment,
-			tanggal_ajukan_pengembalian: new Date().toISOString()
-		};
+		try {
+			// Update data rental di Directus
+			const response = await fetch(
+				`https://directus.eltamaprimaindo.com/items/rentals/${selectedRental.id}`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						status: 'dikembalikan',
+						tanggal_kembali: new Date().toISOString().split('T')[0],
+						kondisi: returnCondition,
+						keterangan_pengembalian: returnComment,
+						status_pengembalian: calculateReturnStatus(selectedRental.jatuh_tempo)
+					})
+				}
+			);
 
-		// Update di array rentals
-		const index = rentals.findIndex((r) => r.id === selectedRental.id);
-		if (index !== -1) {
-			rentals[index] = updatedRental;
-			selectedRental = updatedRental;
+			if (!response.ok) {
+				throw new Error('Gagal mengupdate data pengembalian');
+			}
+
+			// Refresh data
+			await fetchRentals();
+			selectedRental = null;
+			showReturnModal = false;
+			returnComment = '';
+			returnCondition = 'baik';
+
+			alert('Barang berhasil dikembalikan!');
+		} catch (err) {
+			console.error('Error returning item:', err);
+			alert('Error: ' + err.message);
 		}
+	}
 
-		// Add to pending approvals list
-		pendingApprovals = [...pendingApprovals, updatedRental.id];
-
-		// Add to riwayat
-		if (!updatedRental.riwayat) updatedRental.riwayat = [];
-		updatedRental.riwayat.push({
-			tanggal: new Date().toISOString().split('T')[0],
-			aktivitas: `Pengajuan pengembalian disubmit (Kondisi: ${returnCondition})`,
-			user: 'Current User',
-			keterangan: returnComment
-		});
-
-		filterRentals();
-		showReturnModal = false;
-		returnComment = '';
-		returnCondition = 'baik';
-
-		alert('Pengajuan pengembalian berhasil disubmit! Menunggu approval dari admin inventory.');
+	// Function untuk menghitung status pengembalian
+	function calculateReturnStatus(jatuhTempo) {
+		const today = new Date();
+		const dueDate = new Date(jatuhTempo);
+		return today <= dueDate ? 'tepat_waktu' : 'terlambat';
 	}
 
 	// Reactive statements
@@ -507,11 +522,11 @@
 							tabindex="0"
 							on:keydown={(e) => e.key === 'Enter' && selectRental(rental)}
 						>
-							<div class="col-span-2 text-gray-900 font-medium truncate" title={rental.namaBarang}>
-								{rental.namaBarang}
+							<div class="col-span-2 text-gray-900 font-medium truncate" title={rental.barang_nama}>
+								{rental.barang_nama}
 							</div>
-							<div class="col-span-1 text-gray-600 truncate" title={rental.kategori}>
-								{rental.kategori}
+							<div class="col-span-1 text-gray-600 truncate" title={rental.parent_category}>
+								{rental.parent_category}
 							</div>
 							<div class="col-span-1 text-gray-600 truncate" title={rental.peminjam}>
 								{rental.peminjam}
@@ -543,13 +558,13 @@
 							<div class="col-span-1 flex justify-center">
 								<span
 									class="px-1 py-0.5 rounded text-xs font-medium border {getStatusPengembalianClass(
-										rental.statusPengembalian
+										rental.status_pengembalian
 									)}"
 									title={rental.statusPengembalianLabel}
 								>
-									{rental.statusPengembalian === 'tepat_waktu'
+									{rental.status_pengembalian === 'tepat_waktu'
 										? '✅'
-										: rental.statusPengembalian === 'terlambat'
+										: rental.status_pengembalian === 'terlambat'
 											? '⏰'
 											: '⏳'}
 								</span>
@@ -582,8 +597,8 @@
 				<div class="p-6 border-b border-gray-200">
 					<div class="flex justify-between items-start mb-4">
 						<div>
-							<h2 class="text-xl font-bold text-gray-900">{selectedRental.nomorRental}</h2>
-							<p class="text-gray-600 mt-1">{selectedRental.namaBarang}</p>
+							<h2 class="text-xl font-bold text-gray-900">Rental #{selectedRental.id}</h2>
+							<p class="text-gray-600 mt-1">{selectedRental.barang_nama}</p>
 						</div>
 						<div class="text-right">
 							<span
@@ -597,7 +612,7 @@
 							<div class="mt-2">
 								<span
 									class="inline-block px-2 py-1 rounded-full text-xs font-medium border {getStatusPengembalianClass(
-										selectedRental.statusPengembalian
+										selectedRental.status_pengembalian
 									)}"
 								>
 									{selectedRental.statusPengembalianLabel}
@@ -619,15 +634,10 @@
 
 					<!-- Action Buttons -->
 					<div class="flex space-x-3">
-						<button
-							class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors"
-							on:click={() => goto(`/inventory/rental/edit/${selectedRental.id}`)}
-						>
-							📝 Edit
-						</button>
 						{#if selectedRental.status === 'dipinjam'}
 							<button
 								class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium transition-colors"
+								on:click={() => (showReturnModal = true)}
 							>
 								📥 Terima Pengembalian
 							</button>
@@ -635,7 +645,7 @@
 						<button
 							class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium transition-colors"
 						>
-							� Cetak Laporan
+							🖨️ Cetak Laporan
 						</button>
 					</div>
 				</div>
@@ -675,11 +685,11 @@
 							</div>
 							<div>
 								<div class="text-sm font-medium text-gray-600">Kategori</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.kategori}</div>
+								<div class="text-sm text-gray-900 mt-1">{selectedRental.parent_category}</div>
 							</div>
 							<div>
 								<div class="text-sm font-medium text-gray-600">Sub Kategori</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.subKategori}</div>
+								<div class="text-sm text-gray-900 mt-1">{selectedRental.sub_category}</div>
 							</div>
 							<div>
 								<div class="text-sm font-medium text-gray-600">Jumlah</div>
@@ -687,6 +697,10 @@
 									{selectedRental.qty}
 									{selectedRental.satuan}
 								</div>
+							</div>
+							<div>
+								<div class="text-sm font-medium text-gray-600">Stok Tersedia</div>
+								<div class="text-sm text-gray-900 mt-1">{selectedRental.stok_tersedia} pcs</div>
 							</div>
 							<div>
 								<div class="text-sm font-medium text-gray-600">Status</div>
@@ -738,25 +752,26 @@
 								</div>
 							</div>
 							<div
-								class="p-4 rounded-lg {selectedRental.statusPengembalian === 'tepat_waktu'
+								class="p-4 rounded-lg {selectedRental.status_pengembalian === 'tepat_waktu'
 									? 'bg-green-50'
-									: selectedRental.statusPengembalian === 'terlambat'
+									: selectedRental.status_pengembalian === 'terlambat'
 										? 'bg-red-50'
 										: 'bg-gray-50'}"
 							>
 								<div
-									class="text-sm font-medium {selectedRental.statusPengembalian === 'tepat_waktu'
+									class="text-sm font-medium {selectedRental.status_pengembalian === 'tepat_waktu'
 										? 'text-green-600'
-										: selectedRental.statusPengembalian === 'terlambat'
+										: selectedRental.status_pengembalian === 'terlambat'
 											? 'text-red-600'
 											: 'text-gray-600'}"
 								>
 									Status Pengembalian
 								</div>
 								<div
-									class="text-lg font-bold mt-1 {selectedRental.statusPengembalian === 'tepat_waktu'
+									class="text-lg font-bold mt-1 {selectedRental.status_pengembalian ===
+									'tepat_waktu'
 										? 'text-green-900'
-										: selectedRental.statusPengembalian === 'terlambat'
+										: selectedRental.status_pengembalian === 'terlambat'
 											? 'text-red-900'
 											: 'text-gray-900'}"
 								>
@@ -827,6 +842,60 @@
 		</div>
 	</div>
 </div>
+
+<!-- Modal Pengembalian Barang -->
+{#if showReturnModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+			<div class="mt-3">
+				<h3 class="text-lg font-medium text-gray-900 mb-4">Konfirmasi Pengembalian Barang</h3>
+				<div class="space-y-4">
+					<div>
+						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-1"
+							>Kondisi Barang</label
+						>
+						<select
+							id="return-condition"
+							bind:value={returnCondition}
+							class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+						>
+							<option value="baik">Baik</option>
+							<option value="rusak">Rusak</option>
+							<option value="tidak_lengkap">Tidak Lengkap</option>
+							<option value="hilang">Hilang</option>
+						</select>
+					</div>
+					<div>
+						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-1"
+							>Keterangan</label
+						>
+						<textarea
+							id="return-comment"
+							bind:value={returnComment}
+							placeholder="Tambahkan keterangan (opsional)"
+							class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+							rows="3"
+						></textarea>
+					</div>
+				</div>
+				<div class="flex justify-end space-x-3 mt-6">
+					<button
+						on:click={() => (showReturnModal = false)}
+						class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+					>
+						Batal
+					</button>
+					<button
+						on:click={handleReturnItem}
+						class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+					>
+						Konfirmasi Pengembalian
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	/* Custom styles for rental system */
