@@ -32,6 +32,11 @@
 	let showRentalDropdown = false;
 	let searchTerm = '';
 
+	// State paginasi untuk Barang di Stok
+	let currentStockPage = 1;
+	const stockItemsPerPage = 20;
+	let paginatedStockedItems = [];
+
 	async function loadData() {
 		loading = true;
 		try {
@@ -122,7 +127,10 @@
 						parentCategories.find((cat) => cat.id === item.parent_category?.id)?.parent_category ||
 						'Unknown',
 					sub_category:
-						subCategories.find((cat) => cat.id === item.sub_category?.id)?.nama_sub || 'Unknown'
+						subCategories.find((cat) => cat.id === item.sub_category?.id)?.nama_sub || 'Unknown',
+					// Tambahan: simpan ID kategori dan subkategori untuk kebutuhan edit
+					parent_category_id: item.parent_category?.id || null,
+					sub_category_id: item.sub_category?.id || null
 				};
 			});
 			console.log('Stocked Items:', stockedItems); // Debug stockedItems
@@ -283,13 +291,36 @@
 
 	async function handleEditStock({ detail }) {
 		try {
-			const parentCatId = parentCategories.find(
-				(cat) => cat.parent_category === detail.parent_category
-			)?.id;
-			const subCatId = subCategories.find((cat) => cat.nama_sub === detail.sub_category)?.id;
+			console.log('handleEditStock detail:', detail);
+			let parentCatId = detail.parent_category;
+			let subCatId = detail.sub_category;
+
+			// Jika sudah ID dan ada di master, langsung pakai
+			if (!parentCategories.some((cat) => cat.id == parentCatId)) {
+				const foundByName = parentCategories.find((cat) => cat.parent_category === parentCatId);
+				if (foundByName) {
+					parentCatId = foundByName.id;
+				} else {
+					console.error('Parent category tidak ditemukan:', parentCatId, parentCategories);
+					parentCatId = null;
+				}
+			}
+			if (!subCategories.some((cat) => cat.id == subCatId)) {
+				const foundByName = subCategories.find((cat) => cat.nama_sub === subCatId);
+				if (foundByName) {
+					subCatId = foundByName.id;
+				} else {
+					console.error('Sub category tidak ditemukan:', subCatId, subCategories);
+					subCatId = null;
+				}
+			}
+
+			console.log('handleEditStock resolved parentCatId:', parentCatId, 'subCatId:', subCatId);
 
 			if (!parentCatId || !subCatId) {
-				throw new Error('Kategori atau subkategori tidak valid');
+				throw new Error(
+					'Kategori atau subkategori tidak valid. Cek value yang dikirim dan data master kategori/subkategori.'
+				);
 			}
 
 			const response = await fetch(
@@ -324,8 +355,11 @@
 							description: detail.description,
 							stockIn: detail.stockIn,
 							status: detail.status,
-							parent_category: detail.parent_category,
-							sub_category: detail.sub_category
+							parent_category:
+								parentCategories.find((cat) => cat.id == parentCatId)?.parent_category ||
+								detail.parent_category,
+							sub_category:
+								subCategories.find((cat) => cat.id == subCatId)?.nama_sub || detail.sub_category
 						}
 					: item
 			);
@@ -360,7 +394,7 @@
 	$: isLoading = loading || storeLoading;
 
 	// Filter untuk Barang di Stok
-	$: filteredStockedItems = stockedItems.filter(item => {
+	$: filteredStockedItems = stockedItems.filter((item) => {
 		if (!searchTerm) return true;
 		const search = searchTerm.toLowerCase();
 		return (
@@ -378,13 +412,11 @@
 		(item) =>
 			!stockedItems.some((stock) => stock.name === item.name) &&
 			!addedToStockIds.includes(item.id) &&
-			(
-				!searchTerm ||
+			(!searchTerm ||
 				item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
 				item.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
 				item.units?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				item.quantity?.toString().includes(searchTerm.toLowerCase())
-			)
+				item.quantity?.toString().includes(searchTerm.toLowerCase()))
 	);
 
 	// Update total items berdasarkan hasil filter
@@ -395,7 +427,7 @@
 		const start = (currentPage - 1) * itemsPerPage;
 		const end = start + itemsPerPage;
 		paginatedItems = filteredReceivedItems.slice(start, end);
-		
+
 		// Reset ke halaman 1 jika current page melebihi total pages setelah filter
 		const maxPages = Math.ceil(totalFilteredItems / itemsPerPage);
 		if (currentPage > maxPages && maxPages > 0) {
@@ -433,6 +465,58 @@
 		}
 		return pages;
 	}
+
+	function updatePaginatedStockedItems() {
+		const start = (currentStockPage - 1) * stockItemsPerPage;
+		const end = start + stockItemsPerPage;
+		paginatedStockedItems = filteredStockedItems.slice(start, end);
+	}
+
+	function changeStockPage(page) {
+		const totalPages = Math.ceil(filteredStockedItems.length / stockItemsPerPage);
+		if (page < 1 || page > totalPages) return;
+		currentStockPage = page;
+		updatePaginatedStockedItems();
+	}
+
+	function getStockPageNumbers() {
+		const totalPages = Math.ceil(filteredStockedItems.length / stockItemsPerPage);
+		const maxPagesToShow = 10;
+		let pages = [];
+		if (totalPages <= maxPagesToShow) {
+			for (let i = 1; i <= totalPages; i++) pages.push(i);
+		} else {
+			if (currentStockPage <= 6) {
+				pages = [...Array(Math.min(maxPagesToShow, totalPages)).keys()].map((i) => i + 1);
+			} else if (currentStockPage >= totalPages - 4) {
+				pages = [...Array(maxPagesToShow).keys()].map((i) => totalPages - maxPagesToShow + i + 1);
+			} else {
+				pages = [
+					1,
+					2,
+					'...',
+					currentStockPage - 2,
+					currentStockPage - 1,
+					currentStockPage,
+					currentStockPage + 1,
+					currentStockPage + 2,
+					'...',
+					totalPages
+				];
+			}
+		}
+		return pages;
+	}
+
+	// Update paginatedStockedItems setiap filteredStockedItems berubah
+	$: {
+		updatePaginatedStockedItems();
+		const maxPages = Math.ceil(filteredStockedItems.length / stockItemsPerPage);
+		if (currentStockPage > maxPages && maxPages > 0) {
+			currentStockPage = 1;
+			updatePaginatedStockedItems();
+		}
+	}
 </script>
 
 <div class="space-y-6 p-6 bg-white-100 min-h-screen">
@@ -449,7 +533,12 @@
 			<!-- Search Icon -->
 			<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
 				<svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+					/>
 				</svg>
 			</div>
 			<!-- Clear Button -->
@@ -459,15 +548,19 @@
 					class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M6 18L18 6M6 6l12 12"
+						/>
 					</svg>
 				</button>
 			{/if}
 		</div>
 		{#if searchTerm}
 			<div class="mt-2 text-sm text-gray-600">
-				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - 
-				Barang di Stok: {filteredStockedItems.length}, 
+				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - Barang di Stok: {filteredStockedItems.length},
 				Barang Diterima: {totalFilteredItems}
 			</div>
 		{/if}
@@ -596,32 +689,73 @@
 						<table class="w-full border-collapse">
 							<thead>
 								<tr class="bg-gray-50 border-b border-gray-200">
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub Kategori</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deskripsi</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-									<th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Nama</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Kategori</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Sub Kategori</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Deskripsi</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Stok</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Status</th
+									>
+									<th
+										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+										>Aksi</th
+									>
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
-								{#each filteredStockedItems as item, index}
+								{#each paginatedStockedItems as item, index}
 									<tr class="hover:bg-gray-50 transition-colors">
-										<td class="p-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
-										<td class="p-4 whitespace-nowrap text-sm text-gray-700">{item.parent_category}</td>
+										<td class="p-4 whitespace-nowrap text-sm font-medium text-gray-900"
+											>{item.name}</td
+										>
+										<td class="p-4 whitespace-nowrap text-sm text-gray-700"
+											>{item.parent_category}</td
+										>
 										<td class="p-4 whitespace-nowrap text-sm text-gray-700">{item.sub_category}</td>
-										<td class="p-4 text-sm text-gray-700 max-w-xs truncate" title={item.description}>{item.description}</td>
-										<td class="p-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{item.stockIn}</td>
+										<td class="p-4 text-sm text-gray-700 max-w-xs truncate" title={item.description}
+											>{item.description}</td
+										>
+										<td class="p-4 whitespace-nowrap text-sm text-gray-900 font-semibold"
+											>{item.stockIn}</td
+										>
 										<td class="p-4 whitespace-nowrap">
 											{#if item.status === 'Ready'}
-												<span class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Ready</span>
+												<span
+													class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800"
+													>Ready</span
+												>
 											{:else if item.status === 'Low Stock'}
-												<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Low Stock</span>
+												<span
+													class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+													>Low Stock</span
+												>
 											{:else if item.status === 'Out of Stock'}
-												<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Out of Stock</span>
+												<span
+													class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
+													>Out of Stock</span
+												>
 											{:else}
-												<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">{item.status}</span>
+												<span
+													class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
+													>{item.status}</span
+												>
 											{/if}
 										</td>
 										<td class="p-4 whitespace-nowrap">
@@ -638,15 +772,76 @@
 						</table>
 					</div>
 				</div>
+				<!-- Paginasi untuk Barang di Stok -->
+				{#if filteredStockedItems.length > 0}
+					<div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
+						<div class="text-sm text-gray-600">
+							Menampilkan {Math.min(
+								(currentStockPage - 1) * stockItemsPerPage + 1,
+								filteredStockedItems.length
+							)} - {Math.min(currentStockPage * stockItemsPerPage, filteredStockedItems.length)} dari
+							{filteredStockedItems.length} barang
+							{#if searchTerm}
+								<span class="text-blue-600">(hasil pencarian)</span>
+							{/if}
+						</div>
+						<div class="flex flex-wrap justify-center gap-1">
+							<button
+								on:click={() => changeStockPage(currentStockPage - 1)}
+								disabled={currentStockPage === 1}
+								class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentStockPage ===
+								1
+									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+							>
+								← Previous
+							</button>
+							{#each getStockPageNumbers() as pageNum, i}
+								{#if pageNum === '...'}
+									<span class="px-3 py-2 text-sm text-gray-500">...</span>
+								{:else}
+									<button
+										on:click={() => changeStockPage(pageNum)}
+										class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentStockPage ===
+										pageNum
+											? 'bg-blue-600 text-white border-blue-600'
+											: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+										disabled={currentStockPage === pageNum}
+									>
+										{pageNum}
+									</button>
+								{/if}
+							{/each}
+							<button
+								on:click={() => changeStockPage(currentStockPage + 1)}
+								disabled={currentStockPage ===
+									Math.ceil(filteredStockedItems.length / stockItemsPerPage)}
+								class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentStockPage ===
+								Math.ceil(filteredStockedItems.length / stockItemsPerPage)
+									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
+							>
+								Next →
+							</button>
+						</div>
+					</div>
+				{/if}
 			{:else}
 				<div class="bg-white rounded-lg shadow p-8 text-center">
 					<div class="text-gray-400 mb-4">
 						<svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+							/>
 						</svg>
 					</div>
 					<p class="text-gray-600">
-						{searchTerm ? `Tidak ada barang di stok yang cocok dengan pencarian "${searchTerm}"` : 'Tidak ada barang di stok.'}
+						{searchTerm
+							? `Tidak ada barang di stok yang cocok dengan pencarian "${searchTerm}"`
+							: 'Tidak ada barang di stok.'}
 					</p>
 				</div>
 			{/if}
@@ -678,7 +873,8 @@
 						<button
 							on:click={() => changePage(currentPage - 1)}
 							disabled={currentPage === 1}
-							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === 1
+							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
+							1
 								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
 						>
@@ -690,7 +886,8 @@
 							{:else}
 								<button
 									on:click={() => changePage(pageNum)}
-									class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === pageNum
+									class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
+									pageNum
 										? 'bg-blue-600 text-white border-blue-600'
 										: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
 									disabled={currentPage === pageNum}
@@ -702,7 +899,8 @@
 						<button
 							on:click={() => changePage(currentPage + 1)}
 							disabled={currentPage === Math.ceil(totalFilteredItems / itemsPerPage)}
-							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage === Math.ceil(totalFilteredItems / itemsPerPage)
+							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
+							Math.ceil(totalFilteredItems / itemsPerPage)
 								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
 						>
@@ -714,18 +912,30 @@
 				<div class="bg-white rounded-lg shadow p-8 text-center">
 					<div class="text-gray-400 mb-4">
 						<svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.44-1.01-5.9-2.618A8 8 0 0112 3c1.572 0 3.047.455 4.28 1.235" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.44-1.01-5.9-2.618A8 8 0 0112 3c1.572 0 3.047.455 4.28 1.235"
+							/>
 						</svg>
 					</div>
 					<p class="text-gray-600 mb-2">
-						Tidak ada barang diterima yang cocok dengan pencarian "<span class="font-semibold">{searchTerm}</span>"
+						Tidak ada barang diterima yang cocok dengan pencarian "<span class="font-semibold"
+							>{searchTerm}</span
+						>"
 					</p>
 					<button
 						on:click={clearSearch}
 						class="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700"
 					>
 						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M6 18L18 6M6 6l12 12"
+							/>
 						</svg>
 						Hapus Filter
 					</button>
@@ -755,31 +965,34 @@
 	.group:focus .group-hover\:opacity-100 {
 		opacity: 1;
 	}
-	
+
 	/* Custom scrollbar untuk tabel */
 	.overflow-x-auto::-webkit-scrollbar {
 		height: 8px;
 	}
-	
+
 	.overflow-x-auto::-webkit-scrollbar-track {
 		background: #f1f5f9;
 		border-radius: 4px;
 	}
-	
+
 	.overflow-x-auto::-webkit-scrollbar-thumb {
 		background: #cbd5e1;
 		border-radius: 4px;
 	}
-	
+
 	.overflow-x-auto::-webkit-scrollbar-thumb:hover {
 		background: #94a3b8;
 	}
-	
+
 	/* Animasi untuk transisi */
 	.transition-colors {
-		transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+		transition:
+			background-color 0.15s ease-in-out,
+			border-color 0.15s ease-in-out,
+			color 0.15s ease-in-out;
 	}
-	
+
 	/* Highlight search results */
 	.search-highlight {
 		background-color: #fef3c7;
