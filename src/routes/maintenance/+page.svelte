@@ -1,10 +1,11 @@
 <!-- src/routes/maintenance/+page.svelte -->
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, afterUpdate } from 'svelte';
     import { maintenanceStore, maintenanceStats } from '$lib/stores/maintenance.js';
     import MaintenanceTable from '$lib/components/maintenance/MaintenanceTable.svelte';
     import MaintenanceFilter from '$lib/components/maintenance/MaintenanceFilter.svelte';
     import MaintenanceStats from '$lib/components/maintenance/MaintenanceStats.svelte';
+    import { afterNavigate } from '$app/navigation';
     
     let loading = false;
     let error = null;
@@ -17,6 +18,13 @@
         error = err.message;
       } finally {
         loading = false;
+      }
+    });
+    
+    afterNavigate(async (nav) => {
+      // Jika kembali ke halaman /maintenance, reload data
+      if (nav.to?.url?.pathname === '/maintenance') {
+        await maintenanceStore.loadMaintenance();
       }
     });
     

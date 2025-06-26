@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { maintenanceService } from '$lib/services/maintenance.js';
+import { uploadDirectusFile } from '$lib/services/directus-upload.js';
 
 // Main maintenance store
 function createMaintenanceStore() {
@@ -95,6 +96,26 @@ function createMaintenanceStore() {
     async createMaintenance(data) {
       try {
         const response = await maintenanceService.create(data);
+        update(state => ({
+          ...state,
+          items: [response.data, ...state.items]
+        }));
+        return response.data;
+      } catch (error) {
+        update(state => ({ ...state, error: error.message }));
+        throw error;
+      }
+    },
+
+    async createMaintenanceWithPhoto(data, file) {
+      try {
+        let photoId = null;
+        if (file) {
+          photoId = await uploadDirectusFile(file);
+        }
+        const payload = { ...data };
+        if (photoId) payload.photo = photoId;
+        const response = await maintenanceService.create(payload);
         update(state => ({
           ...state,
           items: [response.data, ...state.items]

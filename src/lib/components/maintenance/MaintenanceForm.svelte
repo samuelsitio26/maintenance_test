@@ -48,14 +48,14 @@
     try {
       // Load tools and projects
       const [toolsResponse, projectsResponse] = await Promise.all([
-        toolsService.getAll({ filter: { is_active: { _eq: true } } }),
-        projectsService.getActive()
+        toolsService.getAll({ filter: { is_active: { _eq: true } } }), // Load active tools for general selection
+        projectsService.getActive() // Load active projects for general selection
       ]);
       
       tools = toolsResponse.data || [];
       projects = projectsResponse.data || [];
       
-      // Check for pre-fill data from URL params
+      // Check for pre-fill data from URL params and fetch specific items if not in active lists
       await handlePreFillData();
       
       formReady = true;
@@ -69,64 +69,108 @@
   // Handle pre-fill data from URL parameters
   async function handlePreFillData() {
     const params = $page.url.searchParams;
-    
-    // Get pre-fill data from URL
-    const toolId = params.get('tool_id');
-    const projectId = params.get('project_id');
+    const toolIdStr = params.get('tool_id');
+    const projectIdStr = params.get('project_id');
     const condition = params.get('condition');
     const notes = params.get('notes');
-    const toolName = params.get('tool_name');
-    const projectName = params.get('project_name');
     
-    if (toolId || projectId) {
-      // Set form data
-      if (toolId) {
-        formData.tool_id = parseInt(toolId);
-        // Find and auto-select the tool
-        const selectedTool = tools.find(t => t.id === parseInt(toolId));
-        if (selectedTool) {
-          console.log('Auto-selected tool:', selectedTool.name);
+    let urlToolName = params.get('tool_name') || '';
+    let urlProjectName = params.get('project_name') || '';
+    let actualToolName = urlToolName;
+    let actualProjectName = urlProjectName;
+
+    let needsPreFillLogic = false;
+
+    if (toolIdStr) {
+      needsPreFillLogic = true;
+      const toolId = parseInt(toolIdStr);
+      formData.tool_id = toolId;
+
+      let foundTool = tools.find(t => t.id === toolId);
+      if (!foundTool) {
+        try {
+          console.log(`Tool ID ${toolId} not in active list, fetching directly...`);
+          const toolResponse = await toolsService.getById(toolId);
+          if (toolResponse && toolResponse.data) {
+            foundTool = toolResponse.data;
+            // Add to list if not already there (by ID) to ensure it's an option
+            if (!tools.some(t => t.id === foundTool.id)) {
+              tools = [...tools, foundTool].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            }
+            console.log(`Ensured tool ${foundTool.name} is in dropdown list.`);
+          } else {
+            console.warn(`Pre-filled tool ID ${toolId} not found via getById.`);
+          }
+        } catch (err) {
+          console.error(`Error fetching pre-filled tool ID ${toolId}:`, err);
         }
       }
-      
-      if (projectId) {
-        formData.project_id = parseInt(projectId);
-        // Find and auto-select the project
-        const selectedProject = projects.find(p => p.id === parseInt(projectId));
-        if (selectedProject) {
-          console.log('Auto-selected project:', selectedProject.name);
+      if (foundTool) {
+        actualToolName = foundTool.name || urlToolName;
+      } else {
+        console.warn('Tool ID from URL could not be fully resolved to a tool object:', toolIdStr);
+      }
+    }
+
+    if (projectIdStr) {
+      needsPreFillLogic = true;
+      const projectId = parseInt(projectIdStr);
+      formData.project_id = projectId;
+
+      let foundProject = projects.find(p => p.id === projectId);
+      if (!foundProject) {
+        try {
+          console.log(`Project ID ${projectId} not in active list, fetching directly...`);
+          const projectResponse = await projectsService.getById(projectId);
+          if (projectResponse && projectResponse.data) {
+            foundProject = projectResponse.data;
+            // Add to list if not already there (by ID)
+            if (!projects.some(p => p.id === foundProject.id)) {
+              projects = [...projects, foundProject].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            }
+            console.log(`Ensured project ${foundProject.name} is in dropdown list.`);
+          } else {
+            console.warn(`Pre-filled project ID ${projectId} not found via getById.`);
+          }
+        } catch (err) {
+          console.error(`Error fetching pre-filled project ID ${projectId}:`, err);
         }
       }
-      
-      // Set notes with condition info
+      if (foundProject) {
+        actualProjectName = foundProject.name || urlProjectName;
+      } else {
+        console.warn('Project ID from URL could not be fully resolved to a project object:', projectIdStr);
+      }
+    }
+
+    if (needsPreFillLogic) {
       if (condition) {
         const conditionNote = `Kondisi alat: ${condition.toUpperCase()}`;
-        const existingNotes = notes ? `. Catatan: ${notes}` : '';
+        const existingNotes = notes ? `. Catatan tambahan: ${notes}` : '';
         formData.notes = conditionNote + existingNotes;
+      } else if (notes) {
+        formData.notes = notes;
       }
-      
-      // Set display info
+
       preFilledInfo = {
-        tool_name: toolName || '',
-        project_name: projectName || '',
+        tool_name: actualToolName,
+        project_name: actualProjectName,
         condition: condition || '',
         isAutoFilled: true
       };
-      
-      // Auto-set status and priority based on condition
+
       if (condition === 'rusak') {
         formData.status = 'pending';
         formData.progress = '0%';
-        // Set urgent damage date (today)
         formData.damage_date = new Date().toISOString().split('T')[0];
       } else if (condition === 'bermasalah') {
         formData.status = 'to_do';
         formData.progress = '0%';
-        // Set damage date (today)  
         formData.damage_date = new Date().toISOString().split('T')[0];
       }
-      
-      console.log('Pre-filled form data:', formData);
+      // Force reactivity for formData if only sub-properties changed for complex objects
+      formData = { ...formData }; 
+      console.log('Pre-filled form data:', JSON.parse(JSON.stringify(formData)));
     }
   }
   
@@ -148,24 +192,59 @@
       }
   }
   
+  // Image upload handling
+  let damageImage = null;
+  let damageImagePreview = '';
+  let imageError = '';
+
+  function handleImageChange(e) {
+    imageError = '';
+    const file = e.target.files[0];
+    if (!file) {
+      damageImage = null;
+      damageImagePreview = '';
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      imageError = 'File harus berupa gambar (jpg/png)';
+      damageImage = null;
+      damageImagePreview = '';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      imageError = 'Ukuran gambar maksimal 2MB';
+      damageImage = null;
+      damageImagePreview = '';
+      return;
+    }
+    damageImage = file;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      damageImagePreview = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  
   // Handle submit
   async function handleSubmit() {
     loading = true;
     error = null;
-    
+    imageError = '';
     try {
-      // Prepare data for submission
       const submitData = {
         ...formData,
-        progress_items: JSON.stringify(progressItems) // Store as JSON string
+        progress_items: JSON.stringify(progressItems)
       };
-      
-      if (isEdit && maintenance?.id) {
-        await maintenanceStore.updateMaintenance(maintenance.id, submitData);
+      if (damageImage) {
+        // Upload image to Directus and save photo id
+        await maintenanceStore.createMaintenanceWithPhoto(submitData, damageImage);
       } else {
-        await maintenanceStore.createMaintenance(submitData);
+        if (isEdit && maintenance?.id) {
+          await maintenanceStore.updateMaintenance(maintenance.id, submitData);
+        } else {
+          await maintenanceStore.createMaintenance(submitData);
+        }
       }
-      
       goto('/maintenance');
     } catch (err) {
       error = err.message || 'Terjadi kesalahan';
@@ -490,6 +569,29 @@
       <p class="mt-1 text-xs text-gray-500">
         Catatan detail untuk setiap pekerjaan bisa diisi di checklist progress di atas
       </p>
+    </div>
+
+    <!-- Image Upload for Damage Photo -->
+    <div class="mt-6">
+      <label for="damage_image" class="block text-sm font-medium text-gray-700">
+        Foto Kerusakan Alat
+        <span class="ml-2 text-xs text-gray-400">(Opsional, max 2MB, jpg/png)</span>
+      </label>
+      <input
+        type="file"
+        id="damage_image"
+        accept="image/*"
+        on:change={(e) => handleImageChange(e)}
+        class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+      />
+      {#if damageImagePreview}
+        <div class="mt-2">
+          <img src={damageImagePreview} alt="Preview Kerusakan" class="max-h-40 rounded border" />
+        </div>
+      {/if}
+      {#if imageError}
+        <p class="mt-1 text-xs text-red-600">{imageError}</p>
+      {/if}
     </div>
   
     <!-- Action Buttons -->

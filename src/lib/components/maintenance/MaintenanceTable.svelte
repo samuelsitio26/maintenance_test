@@ -5,6 +5,7 @@
   import ProgressChecklist from './ProgressChecklist.svelte';
   import { slide } from 'svelte/transition';
   import { goto } from '$app/navigation';
+  import jsPDF from 'jspdf';
   
   export let maintenance = [];
   
@@ -97,6 +98,62 @@
       completedItems
     };
   }
+  
+  // Export maintenance history for a tool as PDF with logo
+  async function exportMaintenance(item) {
+    const doc = new jsPDF();
+    let y = 10;
+    // Load logo as base64
+    const logoUrl = '/EPI.jpg';
+    const logoBase64 = await getBase64FromUrl(logoUrl);
+    if (logoBase64) {
+      doc.addImage(logoBase64, 'PNG', 150, 5, 40, 15);
+      y = 25;
+    }
+    doc.setFontSize(14);
+    doc.text('Riwayat Maintenance Alat', 10, y);
+    y += 10;
+    doc.setFontSize(11);
+    doc.text(`Alat: ${item.tool_id?.name || '-'}`, 10, y); y += 7;
+    doc.text(`Project: ${item.project_id?.name || '-'}`, 10, y); y += 7;
+    doc.text(`Status: ${item.status}`, 10, y); y += 7;
+    doc.text(`Progress: ${item.progress}`, 10, y); y += 7;
+    doc.text(`Tanggal Kerusakan: ${formatDate(item.damage_date)}`, 10, y); y += 7;
+    doc.text(`Tanggal Selesai: ${formatDate(item.completion_date)}`, 10, y); y += 7;
+    doc.text(`Teknisi: ${item.assigned_to || '-'}`, 10, y); y += 7;
+    doc.text(`Catatan: ${item.notes || '-'}`, 10, y); y += 10;
+    // Progress Checklist
+    if (item.progress_items) {
+      try {
+        const progressItems = parseProgressItems(item.progress_items);
+        doc.text('Progress Checklist:', 10, y); y += 7;
+        progressItems.forEach((p, i) => {
+          doc.text(`  ${i + 1}. ${p.text} - ${p.completed ? 'Selesai' : 'Belum'}`, 12, y);
+          y += 7;
+          if (y > 280) { doc.addPage(); y = 10; }
+        });
+      } catch {}
+    }
+    doc.save(`riwayat-maintenance-${item.tool_id?.name || item.id}.pdf`);
+  }
+
+  // Helper to get base64 from image url
+  async function getBase64FromUrl(url) {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = url;
+    });
+  }
 </script>
 
 <div class="overflow-hidden shadow-sm rounded-lg border border-gray-200">
@@ -113,6 +170,9 @@
           Project
         </th>
         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+          Foto
+        </th>
+        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
           Progress
         </th>
         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -126,7 +186,7 @@
     <tbody class="bg-white divide-y divide-gray-200">
       {#if maintenance.length === 0}
         <tr>
-          <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">
+          <td colspan="7" class="px-6 py-8 text-center text-sm text-gray-500">
             <div class="flex flex-col items-center">
               <div class="text-4xl mb-2">📋</div>
               <p class="font-medium">Tidak ada data maintenance</p>
@@ -163,6 +223,17 @@
                 <div class="text-xs text-gray-500">
                   📍 {item.project_id.lokasi}
                 </div>
+              {/if}
+            </td>
+
+            <!-- Photo -->
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              {#if item.photo}
+                <a href={`https://directus.eltamaprimaindo.com/assets/${item.photo}`} target="_blank" rel="noopener noreferrer">
+                  <img src={`https://directus.eltamaprimaindo.com/assets/${item.photo}`} alt="Foto Kerusakan" class="h-16 w-16 object-cover rounded border hover:scale-110 transition-transform duration-200" />
+                </a>
+              {:else}
+                <span class="text-xs text-gray-400">-</span>
               {/if}
             </td>
             
@@ -245,6 +316,23 @@
             <!-- Actions -->
             <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
               <div class="flex flex-col items-center space-y-2">
+                <!-- Show History Button -->
+                <div class="flex space-x-1 mb-1">
+                  <button
+                    on:click={() => goto(`/maintenance/${item.id}`)}
+                    class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    title="Lihat Riwayat Maintenance"
+                  >
+                    🕑 Show
+                  </button>
+                  <button
+                    on:click={() => exportMaintenance(item)}
+                    class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    title="Export Riwayat Maintenance"
+                  >
+                    ⬇️ Export
+                  </button>
+                </div>
                 <!-- Update Progress Button -->
                 {#if canUpdateProgress(item.status)}
                   <button
@@ -254,7 +342,6 @@
                     📊 Progress
                   </button>
                 {/if}
-                
                 <!-- Secondary Actions -->
                 <div class="flex items-center space-x-2">
                   <!-- <button
@@ -263,7 +350,6 @@
                   >
                     ✏️ Edit
                   </button> -->
-                  
                   <button
                     on:click={() => handleDelete(item.id)}
                     class="text-red-600 hover:text-red-900 text-xs"

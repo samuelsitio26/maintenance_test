@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [sveltekit()],
 	optimizeDeps: {
-		include: ['svelte']
+		include: ['svelte', 'jspdf', 'jspdf-autotable']
 	},
 	server: {
 		fs: {

@@ -8,13 +8,17 @@
   let lastMaintenanceDate = '';
   let assignedTo = '';
   let maintenanceType = 'Preventive'; // Default value
-
+  let status = 'Terjadwal'; // Default value
+  let kondisi = '';
+  let beforephoto = null;
+  let afterphoto = null;
   let petugasList = [
-    'Budi', 'Siti', 'Andi', 'Rina', 'Joko'
-  ];
+    'Budi', 'Siti', 'Andi', 'Rina', 'Joko'];
   let showPetugasSuggestions = false;
   let filteredPetugas = [];
   let isNewPetugas = false;
+  let lokasi = '';
+  let note = '';
 
   // Fungsi simpan data ke Directus
   async function handleSimpan() {
@@ -25,13 +29,36 @@
         return;
       }
 
+      // Upload foto sebelum
+      let beforephotoId = null;
+      if (beforephoto) {
+        const formData = new FormData();
+        formData.append('file', beforephoto);
+        const uploadRes = await pemeliharaanService.uploadFile(formData);
+        beforephotoId = uploadRes.data?.id || uploadRes.id;
+      }
+      // Upload foto sesudah
+      let afterphotoId = null;
+      if (afterphoto) {
+        const formData = new FormData();
+        formData.append('file', afterphoto);
+        const uploadRes = await pemeliharaanService.uploadFile(formData);
+        afterphotoId = uploadRes.data?.id || uploadRes.id;
+      }
+
       console.log('Data yang akan dikirim:', {
         tools: alat,
         interval: interval ? parseInt(interval) : null,
         maintenance_date: lastMaintenanceDate || null,
         completion_date: nextScheduleDate || null,
         assign_to: assignedTo || null,
-        type: maintenanceType
+        type: maintenanceType,
+        status,
+        kondisi: kondisi || null,
+        beforephoto: beforephotoId,
+        afterphoto: afterphotoId,
+        note: note || null,
+        lokasi: lokasi || null
       });
 
       // Kirim data ke Directus dengan field yang sesuai schema
@@ -42,6 +69,12 @@
         completion_date: nextScheduleDate || null,
         assign_to: assignedTo || null,
         type: maintenanceType || null,
+        status,
+        kondisi: kondisi || null,
+        beforephoto: beforephotoId,
+        afterphoto: afterphotoId,
+        note: note || null,
+        lokasi: lokasi || null
       });
 
       console.log('Response dari Directus:', result);
@@ -56,6 +89,12 @@
       nextScheduleDate = '';
       assignedTo = '';
       maintenanceType = 'Preventive'; // Reset ke default
+      status = 'Terjadwal'; // Reset ke default
+      kondisi = ''; // Reset kondisi
+      beforephoto = null;
+      afterphoto = null;
+      note = '';
+      lokasi = '';
       
     } catch (err) {
       console.error('Directus error:', err);
@@ -163,8 +202,51 @@
       </select>
     </div>
 
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Status</label>
+      <select bind:value={status} class="mt-1 block w-full border rounded px-3 py-2 text-sm">
+        <option value="Terjadwal">Terjadwal</option>
+        <option value="Selesai">Selesai</option>
+        <option value="Dibatalkan">Dibatalkan</option>
+      </select>
+    </div>
 
-    <!-- Hapus field "Ditugaskan Kepada" karena tidak ada di schema Directus -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Kondisi Alat</label>
+      <select bind:value={kondisi} class="mt-1 block w-full border rounded px-3 py-2 text-sm">
+        <option value="">- Pilih kondisi (opsional) -</option>
+        <option value="Layak">Layak</option>
+        <option value="Tidak Layak">Tidak Layak</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Foto Sebelum Pemeliharaan</label>
+      <input type="file" accept="image/*" on:change={e => beforephoto = e.target.files[0]} class="mt-1 block w-full text-sm" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Foto Sesudah Pemeliharaan</label>
+      <input type="file" accept="image/*" on:change={e => afterphoto = e.target.files[0]} class="mt-1 block w-full text-sm" />
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Detail Tugas</label>
+      <textarea
+        bind:value={note}
+        class="mt-1 block w-full border rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        placeholder="Detail tugas pemeliharaan (opsional)"
+        rows="3"
+      ></textarea>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Lokasi</label>
+      <input
+        type="text"
+        bind:value={lokasi}
+        class="mt-1 block w-full border rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        placeholder="Lokasi alat (opsional)"
+      />
+    </div>
   </div>
 
   <div class="mt-6">

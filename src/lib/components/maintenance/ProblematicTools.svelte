@@ -4,6 +4,7 @@
     import { projectToolsService } from '$lib/services/projectTools.js';
     import ConditionBadge from '$lib/components/common/ConditionBadge.svelte';
     import { fade, slide } from 'svelte/transition';
+    import { goto } from '$app/navigation';
   
     // Props
     export let showFilters = true;
@@ -128,6 +129,18 @@
     // Refresh data
     async function refreshData() {
       await loadProblematicTools();
+    }
+  
+    function handleCreateMaintenance(tool) {
+      // Kirim data via query params sesuai kebutuhan MaintenanceForm
+      const params = new URLSearchParams({
+        tool_id: tool.tool_id?.id,
+        tool_name: tool.tool_id?.name,
+        project_id: tool.project_id?.id,
+        project_name: tool.project_id?.name,
+        condition: tool.condition
+      });
+      goto(`/maintenance/create?${params.toString()}`);
     }
   </script>
   
@@ -266,13 +279,13 @@
                       <span class="font-medium">Catatan:</span> {tool.notes}
                     </div>
                   {/if}
-                  <a href={`/maintenance/create?tool_id=${tool.tool_id?.id}&project_id=${tool.project_id?.id}`}
+                  <!-- <a href={`/maintenance/create?tool_id=${tool.tool_id?.id}&project_id=${tool.project_id?.id}`}
                     class="inline-flex items-center px-2.5 py-1 border border-red-700 rounded shadow-sm text-xs font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 min-w-0 w-fit">
                     <svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 mr-1' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2' style='min-width:1rem;'>
                       <path stroke-linecap='round' stroke-linejoin='round' d='M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a4 4 0 01-1.414.94l-2.829.943.943-2.829a4 4 0 01.94-1.414z' />
                     </svg>
                     Buat Maintenance
-                  </a>
+                  </a> -->
                 </div>
               </div>
   
@@ -312,6 +325,16 @@
                 </div>
               </div>
             {/if}
+  
+            <!-- Action Button -->
+            <div class="mt-4">
+              <button
+                class="ml-2 text-xs px-2 py-1 rounded focus:outline-none transition-colors bg-red-600 text-white hover:bg-red-700"
+                on:click={() => handleCreateMaintenance(tool)}
+              >
+                🛠️ Buat Maintenance
+              </button>
+            </div>
           </div>
         {/each}
   

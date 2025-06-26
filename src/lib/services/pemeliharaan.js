@@ -55,5 +55,24 @@ export const pemeliharaanService = {
       console.error('Error deleting pemeliharaan:', error);
       throw error;
     }
+  },
+
+  // Upload file ke Directus
+  async uploadFile(formData) {
+    try {
+      // Perlu header multipart/form-data, jangan pakai default api.js
+      const response = await fetch('https://directus.eltamaprimaindo.com/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz`
+        },
+        body: formData
+      });
+      if (!response.ok) throw new Error('Gagal upload file');
+      return await response.json();
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw error;
+    }
   }
 };
