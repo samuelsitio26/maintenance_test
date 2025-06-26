@@ -6,7 +6,7 @@
 		{ path: '/', label: 'Dashboard', icon: '🏠' },
 		{ path: '/tools', label: 'Daftar Alat', icon: '🔧' },
 		{ path: '/inventory', label: 'Inventory', icon: '📦' },
-		{ path: '/inventory/rental', label: 'Rental', icon: '📋' },
+		{ path: '/inventory/rental', label: 'Pengajuan Barang', icon: '📋' },
 		{ path: '/maintenance', label: 'Maintenance', icon: '🛠️' },
 		{ path: '/maintenance/pemeliharaan/index', label: 'Pemeliharaan Alat', icon: '🔍' },
 		{ path: '/maintenance/create', label: 'Tambah Perbaikan Alat', icon: '➕' },

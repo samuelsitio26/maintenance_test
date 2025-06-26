@@ -1,35 +1,17 @@
 <script>
 	import { onMount } from 'svelte';
-	import StockTable from '$lib/components/inventory/StockTable.svelte';
 	import StockStats from '$lib/components/inventory/StockStats.svelte';
-	import ConfirmDialog from '$lib/components/inventory/confirm/ConfirmDialog.svelte';
-	import AddToStockDialog from '$lib/components/inventory/confirm/AddToStockDialog.svelte';
-	import EditStockDialog from '$lib/components/inventory/confirm/EditStockDialog.svelte';
 	import { stockStore, stockStats } from '$lib/stores/inventory.js';
 
 	let loading = false;
 	let error = null;
 	let toast = { show: false, message: '', type: 'success' };
-	let confirmDialog = { show: false, message: '', id: null, name: '' };
-	let addToStockDialog = { show: false, selectedItem: null };
-	let editStockDialog = { show: false, selectedItem: null };
 
 	// State untuk data
 	let stockedItems = [];
-	let identitasBarangList = [];
 	let parentCategories = [];
 	let subCategories = [];
 
-	// Paginasi untuk items
-	let currentPage = 1;
-	const itemsPerPage = 30;
-	let totalItems = 0;
-	let paginatedItems = [];
-
-	// Barang yang sudah masuk stok tidak ditampilkan lagi
-	let addedToStockIds = [];
-
-	let showRentalDropdown = false;
 	let searchTerm = '';
 
 	// State paginasi untuk Barang di Stok
@@ -40,17 +22,6 @@
 	async function loadData() {
 		loading = true;
 		try {
-			// Ambil data dari koleksi items (barang diterima)
-			const itemsResponse = await fetch(
-				'https://directus.eltamaprimaindo.com/items/items_pengajuan?fields=id,nama_barang,quantity,units,request_id.department&limit=-1',
-				{
-					headers: {
-						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
-					}
-				}
-			);
-			if (!itemsResponse.ok) throw new Error('Gagal mengambil data barang diterima dari Directus');
-
 			// Ambil data dari koleksi Barang (barang di stok)
 			const barangResponse = await fetch(
 				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,parent_category.id,parent_category.parent_category,sub_category.id,sub_category.nama_sub&limit=-1',
@@ -61,19 +32,6 @@
 				}
 			);
 			if (!barangResponse.ok) throw new Error('Gagal mengambil data stok dari Directus');
-
-			// Ambil data identitas barang
-			const identitasRes = await fetch(
-				'https://directus.eltamaprimaindo.com/items/identitas_barang?fields=id,nama_barang_lengkap,sub_category,parent_category&limit=-1',
-				{
-					headers: {
-						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
-					}
-				}
-			);
-			if (!identitasRes.ok) throw new Error('Gagal mengambil data identitas barang');
-			const identitasData = await identitasRes.json();
-			identitasBarangList = identitasData.data || [];
 
 			// Ambil data kategori
 			const parentResponse = await fetch(
@@ -97,22 +55,8 @@
 			const subData = await subResponse.json();
 			subCategories = subData.data;
 
-			const itemsData = await itemsResponse.json();
 			const barangData = await barangResponse.json();
 			console.log('Barang Data:', barangData.data); // Debug API response
-
-			// Mapping data items
-			const mappedItems = itemsData.data.map((item) => ({
-				id: item.id,
-				name: item.nama_barang,
-				quantity: parseInt(item.quantity) || 0,
-				units: item.units || 'Unknown',
-				department: item.request_id?.department || 'Inventory'
-			}));
-
-			// Simpan data items ke stockStore
-			stockStore.set({ items: mappedItems, originalItems: mappedItems, loading: false });
-			totalItems = mappedItems.length;
 
 			// Simpan data Barang ke stockedItems dengan penanganan yang lebih baik
 			stockedItems = barangData.data.map((item) => {
@@ -134,14 +78,6 @@
 				};
 			});
 			console.log('Stocked Items:', stockedItems); // Debug stockedItems
-
-			// Update statistik
-			stockStats.set({
-				totalItems: mappedItems.length,
-				readyItems: mappedItems.length,
-				lowStockItems: 0,
-				outOfStockItems: 0
-			});
 
 			// Update statistik dan status barang
 			const readyThreshold = 5; // threshold stok minimum untuk status Ready
@@ -168,214 +104,12 @@
 				outOfStockItems
 			});
 
-			updatePaginatedItems(mappedItems);
 		} catch (err) {
 			error = err.message;
 			console.error('Load Data Error:', err);
 		} finally {
 			loading = false;
 		}
-	}
-
-	function updatePaginatedItems(items) {
-		const start = (currentPage - 1) * itemsPerPage;
-		const end = start + itemsPerPage;
-		paginatedItems = items.slice(start, end);
-	}
-
-	function changePage(page) {
-		if (page < 1 || page > Math.ceil(totalItems / itemsPerPage)) return;
-		currentPage = page;
-		// Update dengan filtered items untuk paginasi yang benar
-		updatePaginatedItems(filteredReceivedItems);
-	}
-
-	function addToStock(item) {
-		addToStockDialog = { show: true, selectedItem: item };
-	}
-
-	async function handleAddToStock({ detail }) {
-		try {
-			console.log('Detail received:', detail); // Debug data yang diterima
-			console.log('Parent Categories:', parentCategories);
-			console.log('Sub Categories:', subCategories);
-
-			const parentCatId = detail.parent_category;
-			const subCatId = detail.sub_category;
-
-			if (!parentCatId || !subCatId) {
-				throw new Error(`Kategori ID ${parentCatId} atau subkategori ID ${subCatId} tidak valid.`);
-			}
-
-			// Gunakan nama field sesuai Directus
-			const payload = {
-				Nama: detail.name || '-',
-				Deskripsi: detail.detail || 'Tidak ada deskripsi',
-				StokIn: detail.stockIn || 0,
-				Status: detail.status || 'Unknown',
-				parent_category: parentCatId,
-				sub_category: subCatId
-			};
-
-			const response = await fetch('https://directus.eltamaprimaindo.com/items/Barang', {
-				method: 'POST',
-				headers: {
-					Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify(payload)
-			});
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`Gagal menyimpan ke stok: ${errorText}`);
-			}
-
-			const newItem = await response.json();
-			stockedItems = [
-				{
-					id: newItem.data.id,
-					name: payload.Nama,
-					description: payload.Deskripsi,
-					stockIn: payload.StokIn,
-					status: payload.Status,
-					parent_category:
-						parentCategories.find((cat) => cat.id === parentCatId)?.parent_category || 'Unknown',
-					sub_category: subCategories.find((cat) => cat.id === subCatId)?.nama_sub || 'Unknown'
-				},
-				...stockedItems
-			];
-
-			addedToStockIds = [...addedToStockIds, detail.id];
-
-			toast = { show: true, message: 'Barang berhasil dimasukkan ke stok!', type: 'success' };
-			setTimeout(() => {
-				toast.show = false;
-			}, 2000);
-		} catch (err) {
-			toast = { show: true, message: 'Error: ' + err.message, type: 'error' };
-			setTimeout(() => {
-				toast.show = false;
-			}, 3000);
-			console.error('Error details:', err);
-		} finally {
-			addToStockDialog = { show: false, selectedItem: null };
-		}
-	}
-
-	async function deleteItem(id, name) {
-		confirmDialog = {
-			show: true,
-			message: `Apakah Anda yakin ingin menghapus "${name}"?`,
-			id,
-			name
-		};
-	}
-
-	async function handleConfirmDelete() {
-		const { id } = confirmDialog;
-
-		stockStore.update((current) => {
-			const updatedItems = current.items.filter((item) => item.id !== id);
-			return {
-				...current,
-				items: updatedItems,
-				originalItems: updatedItems
-			};
-		});
-
-		totalItems = $stockStore.items.length;
-		stockStats.set({
-			totalItems: totalItems,
-			readyItems: totalItems,
-			lowStockItems: 0,
-			outOfStockItems: 0
-		});
-
-		updatePaginatedItems($stockStore.items);
-
-		toast = {
-			show: true,
-			message: 'Barang berhasil disembunyikan dari tampilan!',
-			type: 'success'
-		};
-		setTimeout(() => {
-			toast.show = false;
-		}, 2000);
-
-		confirmDialog.show = false;
-	}
-
-	function handleCancelDelete() {
-		confirmDialog = { show: false, message: '', id: null, name: '' };
-	}
-
-	function editStock(item) {
-		editStockDialog = {
-			show: true,
-			selectedItem: {
-				id: item.id,
-				stockIn: item.stockIn,
-				status: item.status // string, bukan object
-			}
-		};
-	}
-
-	async function handleEditStock({ detail }) {
-		try {
-			console.log('handleEditStock detail:', detail);
-			// Hanya update stok dan status, status harus string
-			const response = await fetch(
-				`https://directus.eltamaprimaindo.com/items/Barang/${detail.id}`,
-				{
-					method: 'PATCH',
-					headers: {
-						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						StokIn: detail.stockIn,
-						Status:
-							typeof detail.status === 'string' ? detail.status : detail.status?.value || 'Unknown'
-					})
-				}
-			);
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`Gagal menyimpan perubahan: ${errorText}`);
-			}
-
-			stockedItems = stockedItems.map((item) =>
-				item.id === detail.id
-					? {
-							...item,
-							stockIn: detail.stockIn,
-							status:
-								typeof detail.status === 'string'
-									? detail.status
-									: detail.status?.value || 'Unknown'
-						}
-					: item
-			);
-
-			toast = { show: true, message: 'Barang berhasil diperbarui!', type: 'success' };
-			setTimeout(() => {
-				toast.show = false;
-			}, 2000);
-		} catch (err) {
-			toast = { show: true, message: 'Error: ' + err.message, type: 'error' };
-			setTimeout(() => {
-				toast.show = false;
-			}, 3000);
-			console.error('Error details:', err);
-		} finally {
-			editStockDialog = { show: false, selectedItem: null };
-		}
-	}
-
-	function handleCancelEdit() {
-		editStockDialog = { show: false, selectedItem: null };
 	}
 
 	// Clear search function
@@ -385,8 +119,7 @@
 
 	onMount(loadData);
 
-	$: ({ items, loading: storeLoading } = $stockStore);
-	$: isLoading = loading || storeLoading;
+	$: isLoading = loading;
 
 	// Filter untuk Barang di Stok
 	$: filteredStockedItems = stockedItems.filter((item) => {
@@ -401,65 +134,6 @@
 			item.stockIn?.toString().includes(search)
 		);
 	});
-
-	// Filter untuk Barang Diterima (base filter tanpa pagination)
-	$: filteredReceivedItems = items.filter(
-		(item) =>
-			!stockedItems.some((stock) => stock.name === item.name) &&
-			!addedToStockIds.includes(item.id) &&
-			(!searchTerm ||
-				item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				item.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				item.units?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				item.quantity?.toString().includes(searchTerm.toLowerCase()))
-	);
-
-	// Update total items berdasarkan hasil filter
-	$: totalFilteredItems = filteredReceivedItems.length;
-
-	// Paginated items berdasarkan hasil filter
-	$: {
-		const start = (currentPage - 1) * itemsPerPage;
-		const end = start + itemsPerPage;
-		paginatedItems = filteredReceivedItems.slice(start, end);
-
-		// Reset ke halaman 1 jika current page melebihi total pages setelah filter
-		const maxPages = Math.ceil(totalFilteredItems / itemsPerPage);
-		if (currentPage > maxPages && maxPages > 0) {
-			currentPage = 1;
-		}
-	}
-
-	// Helper untuk paginasi dengan "..."
-	function getPageNumbers() {
-		const totalPages = Math.ceil(totalFilteredItems / itemsPerPage);
-		const maxPagesToShow = 10;
-		let pages = [];
-
-		if (totalPages <= maxPagesToShow) {
-			for (let i = 1; i <= totalPages; i++) pages.push(i);
-		} else {
-			if (currentPage <= 6) {
-				pages = [...Array(Math.min(maxPagesToShow, totalPages)).keys()].map((i) => i + 1);
-			} else if (currentPage >= totalPages - 4) {
-				pages = [...Array(maxPagesToShow).keys()].map((i) => totalPages - maxPagesToShow + i + 1);
-			} else {
-				pages = [
-					1,
-					2,
-					'...',
-					currentPage - 2,
-					currentPage - 1,
-					currentPage,
-					currentPage + 1,
-					currentPage + 2,
-					'...',
-					totalPages
-				];
-			}
-		}
-		return pages;
-	}
 
 	function updatePaginatedStockedItems() {
 		const start = (currentStockPage - 1) * stockItemsPerPage;
@@ -517,9 +191,10 @@
 <div class="space-y-6 p-6 bg-white-100 min-h-screen">
 	<!-- Search Filter - Diperbaiki dengan clear button -->
 	<div class="mb-4">
-		<label class="block text-sm font-medium text-gray-700 mb-2">Pencarian Barang</label>
+		<label for="search-input" class="block text-sm font-medium text-gray-700 mb-2">Pencarian Barang</label>
 		<div class="relative">
 			<input
+				id="search-input"
 				type="text"
 				bind:value={searchTerm}
 				placeholder="Cari di semua tabel: nama barang, kategori, departemen, status, deskripsi..."
@@ -540,6 +215,7 @@
 			{#if searchTerm}
 				<button
 					on:click={clearSearch}
+					aria-label="Hapus pencarian"
 					class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -555,8 +231,7 @@
 		</div>
 		{#if searchTerm}
 			<div class="mt-2 text-sm text-gray-600">
-				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - Barang di Stok: {filteredStockedItems.length},
-				Barang Diterima: {totalFilteredItems}
+				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - Barang di Stok: {filteredStockedItems.length}
 			</div>
 		{/if}
 	</div>
@@ -575,60 +250,23 @@
 		</div>
 	{/if}
 
-	<!-- Confirm Dialog -->
-	<ConfirmDialog
-		bind:show={confirmDialog.show}
-		message={confirmDialog.message}
-		onConfirm={handleConfirmDelete}
-		on:cancel={handleCancelDelete}
-	/>
-
-	<!-- Add to Stock Dialog -->
-	<AddToStockDialog
-		bind:show={addToStockDialog.show}
-		stockItems={items}
-		selectedItem={addToStockDialog.selectedItem}
-		{identitasBarangList}
-		{parentCategories}
-		{subCategories}
-		on:confirm={handleAddToStock}
-		on:cancel={() => (addToStockDialog = { show: false, selectedItem: null })}
-	/>
-
-	<!-- Edit Stock Dialog -->
-	<EditStockDialog
-		bind:show={editStockDialog.show}
-		selectedItem={editStockDialog.selectedItem}
-		{parentCategories}
-		{subCategories}
-		on:confirm={handleEditStock}
-		on:cancel={handleCancelEdit}
-	/>
-
 	<!-- Header -->
 	<div class="sm:flex sm:items-center sm:justify-between">
 		<div>
 			<h1 class="text-2xl font-bold text-gray-900">
-				Manajemen Stok Barang (Inventory - Barang Diterima Terbaru)
+				Monitoring Stok Barang
 			</h1>
 			<p class="mt-1 text-sm text-gray-600">
-				Kelola dan monitor stok barang terbaru (berdasarkan ID) yang sudah diterima dari departemen
-				Inventory
+				Monitor dan lihat status stok barang yang tersedia
 			</p>
 		</div>
 		<div class="mt-4 sm:mt-0 flex space-x-3">
-			<a
-				href="/inventory/create"
-				class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-			>
-				➕ Tambah Barang
-			</a>
 			<div class="relative group">
 				<button
 					type="button"
 					class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
 				>
-					📋 Rental Barang
+					📋 Pengajuan Barang
 					<svg
 						class="ml-2 w-4 h-4"
 						fill="none"
@@ -708,10 +346,6 @@
 										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
 										>Status</th
 									>
-									<th
-										class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-										>Aksi</th
-									>
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
@@ -752,14 +386,6 @@
 													>{item.status}</span
 												>
 											{/if}
-										</td>
-										<td class="p-4 whitespace-nowrap">
-											<button
-												on:click={() => editStock(item)}
-												class="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-											>
-												Edit
-											</button>
 										</td>
 									</tr>
 								{/each}
@@ -841,102 +467,6 @@
 				</div>
 			{/if}
 		</div>
-
-		<!-- Tabel Barang Diterima -->
-		<div class="mt-8">
-			<div class="flex justify-between items-center mb-4">
-				<h2 class="text-xl font-bold text-gray-900">Barang Diterima</h2>
-				<div class="text-sm text-gray-600">
-					{totalFilteredItems} dari {items.length} barang
-				</div>
-			</div>
-			<StockTable stock={paginatedItems} {deleteItem} {addToStock} {addedToStockIds} />
-
-			<!-- Paginasi untuk Barang Diterima -->
-			{#if totalFilteredItems > 0}
-				<div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
-					<div class="text-sm text-gray-600">
-						Menampilkan {Math.min((currentPage - 1) * itemsPerPage + 1, totalFilteredItems)} - {Math.min(
-							currentPage * itemsPerPage,
-							totalFilteredItems
-						)} dari {totalFilteredItems} barang
-						{#if searchTerm}
-							<span class="text-blue-600">(hasil pencarian)</span>
-						{/if}
-					</div>
-					<div class="flex flex-wrap justify-center gap-1">
-						<button
-							on:click={() => changePage(currentPage - 1)}
-							disabled={currentPage === 1}
-							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
-							1
-								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
-						>
-							← Previous
-						</button>
-						{#each getPageNumbers() as pageNum, i}
-							{#if pageNum === '...'}
-								<span class="px-3 py-2 text-sm text-gray-500">...</span>
-							{:else}
-								<button
-									on:click={() => changePage(pageNum)}
-									class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
-									pageNum
-										? 'bg-blue-600 text-white border-blue-600'
-										: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
-									disabled={currentPage === pageNum}
-								>
-									{pageNum}
-								</button>
-							{/if}
-						{/each}
-						<button
-							on:click={() => changePage(currentPage + 1)}
-							disabled={currentPage === Math.ceil(totalFilteredItems / itemsPerPage)}
-							class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {currentPage ===
-							Math.ceil(totalFilteredItems / itemsPerPage)
-								? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
-						>
-							Next →
-						</button>
-					</div>
-				</div>
-			{:else if searchTerm}
-				<div class="bg-white rounded-lg shadow p-8 text-center">
-					<div class="text-gray-400 mb-4">
-						<svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.44-1.01-5.9-2.618A8 8 0 0112 3c1.572 0 3.047.455 4.28 1.235"
-							/>
-						</svg>
-					</div>
-					<p class="text-gray-600 mb-2">
-						Tidak ada barang diterima yang cocok dengan pencarian "<span class="font-semibold"
-							>{searchTerm}</span
-						>"
-					</p>
-					<button
-						on:click={clearSearch}
-						class="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-					>
-						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M6 18L18 6M6 6l12 12"
-							/>
-						</svg>
-						Hapus Filter
-					</button>
-				</div>
-			{/if}
-		</div>
 	{/if}
 </div>
 
@@ -986,12 +516,5 @@
 			background-color 0.15s ease-in-out,
 			border-color 0.15s ease-in-out,
 			color 0.15s ease-in-out;
-	}
-
-	/* Highlight search results */
-	.search-highlight {
-		background-color: #fef3c7;
-		padding: 1px 2px;
-		border-radius: 2px;
 	}
 </style>
