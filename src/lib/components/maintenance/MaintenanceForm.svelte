@@ -7,6 +7,7 @@
   import { toolsService } from '$lib/services/tools.js';
   import { projectsService } from '$lib/services/projects.js';
   import ProgressChecklist from './ProgressChecklist.svelte';
+  import Modal from '../common/Modal.svelte';
   
   export let maintenance = null;
   export let isEdit = false;
@@ -197,6 +198,20 @@
   let damageImagePreview = '';
   let imageError = '';
 
+  // New tool creation
+  let showCreateToolModal = false;
+  let createToolLoading = false;
+  let createToolError = '';
+  let newToolData = {
+    name: '',
+    description: '',
+    serial_number: '',
+    brand: '',
+    type: '',
+    purchase_date: '',
+    is_active: true
+  };
+
   function handleImageChange(e) {
     imageError = '';
     const file = e.target.files[0];
@@ -268,6 +283,70 @@
     progressItems = [];
     formData.progress_items = [];
     preFilledInfo = { tool_name: '', project_name: '', condition: '', isAutoFilled: false };
+  }
+
+  // Show create tool modal
+  function showCreateTool() {
+    newToolData = {
+      name: '',
+      description: '',
+      serial_number: '',
+      brand: '',
+      type: '',
+      purchase_date: '',
+      is_active: true
+    };
+    createToolError = '';
+    showCreateToolModal = true;
+  }
+
+  // Handle create new tool
+  async function handleCreateTool() {
+    if (!newToolData.name.trim()) {
+      createToolError = 'Nama alat harus diisi';
+      return;
+    }
+
+    createToolLoading = true;
+    createToolError = '';
+
+    try {
+      const response = await toolsService.create(newToolData);
+      const createdTool = response.data;
+
+      // Add to tools list
+      tools = [...tools, createdTool].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      // Select the newly created tool
+      formData.tool_id = createdTool.id;
+
+      // Close modal
+      showCreateToolModal = false;
+
+      // Show success message (optional)
+      console.log('Tool created successfully:', createdTool.name);
+
+    } catch (err) {
+      createToolError = err.response?.data?.errors?.[0]?.message || err.message || 'Gagal membuat alat baru';
+      console.error('Error creating tool:', err);
+    } finally {
+      createToolLoading = false;
+    }
+  }
+
+  // Cancel create tool
+  function cancelCreateTool() {
+    showCreateToolModal = false;
+    newToolData = {
+      name: '',
+      description: '',
+      serial_number: '',
+      brand: '',
+      type: '',
+      purchase_date: '',
+      is_active: true
+    };
+    createToolError = '';
   }
   
   // Get condition badge class
@@ -399,25 +478,46 @@
             <span class="ml-2 text-xs text-green-600">✓ Otomatis terpilih</span>
           {/if}
         </label>
-        <select
-          id="tool"
-          bind:value={formData.tool_id}
-          required
-          disabled={preFilledInfo.isAutoFilled && formData.tool_id}
-          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md disabled:bg-gray-50 disabled:text-gray-500"
-        >
-          <option value={null}>Pilih Alat</option>
-          {#each tools as tool}
-            <option value={tool.id}>
-              {tool.name} {tool.description ? `- ${tool.description}` : ''}
-            </option>
-          {/each}
-        </select>
+        <div class="mt-1 flex space-x-2">
+          <select
+            id="tool"
+            bind:value={formData.tool_id}
+            required
+            disabled={preFilledInfo.isAutoFilled && formData.tool_id}
+            class="flex-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md disabled:bg-gray-50 disabled:text-gray-500"
+          >
+            <option value={null}>Pilih Alat</option>
+            {#each tools as tool}
+              <option value={tool.id}>
+                {tool.name} {tool.description ? `- ${tool.description}` : ''}
+              </option>
+            {/each}
+          </select>
+          <button
+            type="button"
+            on:click={showCreateTool}
+            disabled={preFilledInfo.isAutoFilled && formData.tool_id}
+            class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Tambah Alat Baru"
+            aria-label="Tambah Alat Baru"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+          </button>
+        </div>
         {#if preFilledInfo.isAutoFilled && formData.tool_id}
           <p class="mt-1 text-xs text-gray-500">
             Alat dipilih otomatis dari tool bermasalah. 
             <button type="button" on:click={clearPreFill} class="text-blue-600 underline">
               Ubah manual
+            </button>
+          </p>
+        {:else}
+          <p class="mt-1 text-xs text-gray-500">
+            Tidak menemukan alat yang dicari? 
+            <button type="button" on:click={showCreateTool} class="text-blue-600 underline">
+              Buat alat baru
             </button>
           </p>
         {/if}
@@ -538,12 +638,12 @@
     
     <!-- Progress Checklist - Full Width -->
     <div class="mt-6">
-      <label class="block text-sm font-medium text-gray-700 mb-3">
+      <div class="block text-sm font-medium text-gray-700 mb-3">
         Progress Maintenance
         <span class="ml-2 text-xs text-blue-600">
           📊 Otomatis dihitung dari checklist
         </span>
-      </label>
+      </div>
       <ProgressChecklist 
         bind:progressItems={progressItems}
         on:progress-change={handleProgressChange}
@@ -620,3 +720,138 @@
     </div>
   </div>
 </form>
+
+<!-- Modal for Creating New Tool -->
+<Modal bind:open={showCreateToolModal} title="Tambah Alat Baru" size="medium">
+  <form on:submit|preventDefault={handleCreateTool} class="space-y-4">
+    {#if createToolError}
+      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+        <p class="text-sm">{createToolError}</p>
+      </div>
+    {/if}
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <!-- Tool Name -->
+      <div class="sm:col-span-2">
+        <label for="new_tool_name" class="block text-sm font-medium text-gray-700">
+          Nama Alat <span class="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          id="new_tool_name"
+          bind:value={newToolData.name}
+          required
+          placeholder="Contoh: Excavator PC200"
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+
+      <!-- Description -->
+      <div class="sm:col-span-2">
+        <label for="new_tool_description" class="block text-sm font-medium text-gray-700">
+          Deskripsi
+        </label>
+        <input
+          type="text"
+          id="new_tool_description"
+          bind:value={newToolData.description}
+          placeholder="Deskripsi singkat alat"
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+
+      <!-- Serial Number -->
+      <div>
+        <label for="new_tool_serial" class="block text-sm font-medium text-gray-700">
+          Nomor Seri
+        </label>
+        <input
+          type="text"
+          id="new_tool_serial"
+          bind:value={newToolData.serial_number}
+          placeholder="Serial number alat"
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+
+      <!-- Brand -->
+      <div>
+        <label for="new_tool_brand" class="block text-sm font-medium text-gray-700">
+          Merek
+        </label>
+        <input
+          type="text"
+          id="new_tool_brand"
+          bind:value={newToolData.brand}
+          placeholder="Merek alat"
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+
+      <!-- Type -->
+      <div>
+        <label for="new_tool_type" class="block text-sm font-medium text-gray-700">
+          Tipe
+        </label>
+        <input
+          type="text"
+          id="new_tool_type"
+          bind:value={newToolData.type}
+          placeholder="Tipe alat"
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+
+      <!-- Purchase Date -->
+      <div>
+        <label for="new_tool_purchase_date" class="block text-sm font-medium text-gray-700">
+          Tanggal Pembelian
+        </label>
+        <input
+          type="date"
+          id="new_tool_purchase_date"
+          bind:value={newToolData.purchase_date}
+          class="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+        />
+      </div>
+    </div>
+
+    <!-- Status Active -->
+    <div class="flex items-center">
+      <input
+        type="checkbox"
+        id="new_tool_is_active"
+        bind:checked={newToolData.is_active}
+        class="focus:ring-primary h-4 w-4 text-primary border-gray-300 rounded"
+      />
+      <label for="new_tool_is_active" class="ml-2 block text-sm text-gray-900">
+        Alat aktif (dapat digunakan)
+      </label>
+    </div>
+  </form>
+
+  <div slot="footer" class="flex space-x-3">
+    <button
+      type="button"
+      on:click={cancelCreateTool}
+      class="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+    >
+      Batal
+    </button>
+    <button
+      type="button"
+      on:click={handleCreateTool}
+      disabled={createToolLoading || !newToolData.name.trim()}
+      class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {#if createToolLoading}
+        <div class="inline-flex items-center">
+          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+          Menyimpan...
+        </div>
+      {:else}
+        Simpan Alat
+      {/if}
+    </button>
+  </div>
+</Modal>
