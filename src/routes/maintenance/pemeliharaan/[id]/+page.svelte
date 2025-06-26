@@ -129,7 +129,7 @@
       <div><b>Catatan:</b> {alat.notes || '-'}</div>
     </div>
     <div class="mt-6 flex gap-2">
-      <a href="/maintenance/pemeliharaan" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Kembali</a>
+      <a href="/maintenance/pemeliharaan/index" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Kembali</a>
       <button on:click={exportPDF} class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Export PDF</button>
     </div>
   {:else}
