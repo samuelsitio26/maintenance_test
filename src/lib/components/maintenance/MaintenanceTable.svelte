@@ -156,7 +156,8 @@
   }
 </script>
 
-<div class="overflow-hidden shadow-sm rounded-lg border border-gray-200">
+<div class="overflow-x-auto">
+    <div class="min-w-full shadow-sm rounded-lg border border-gray-200"></div>
   <table class="min-w-full divide-y divide-gray-200">
     <thead class="bg-gray-50">
       <tr>
