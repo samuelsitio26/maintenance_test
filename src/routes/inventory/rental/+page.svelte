@@ -14,10 +14,30 @@
 	let showReturnModal = false;
 	let returnComment = '';
 	let returnCondition = 'baik';
+	let reminders = [];
+	let user = { email: '', role: '', name: '' };
+
+	onMount(() => {
+		const email = localStorage.getItem('user_email');
+		if (email === 'managerdept@eltama.com') {
+			user = { email, role: 'Manager Dept', name: 'Manager Dept' };
+		} else if (email === 'inventoryadmin@eltama.com') {
+			user = { email, role: 'Inventory Manager', name: 'Inventory Manager' };
+		} else if (email === 'procurementmanager@eltama.com') {
+			user = { email, role: 'Procurement Manager', name: 'Procurement Manager' };
+		} else {
+			user = { email: '', role: '', name: '' };
+		}
+		fetchRentals();
+	});
+
+	function selectRental(rental) {
+		selectedRental = rental;
+	}
 
 	// Status options untuk filter
 	const statusOptions = [
-		{ value: '', label: 'Semua Status' },
+		{ value: '', label: 'Semua Statu						<div class="text-4xl mb-2">📦</div>' },
 		{ value: 'dipinjam', label: 'Dipinjam' },
 		{ value: 'dikembalikan', label: 'Dikembalikan' }
 	];
@@ -47,7 +67,7 @@
 		{ value: 'month', label: '30 Hari Terakhir' }
 	];
 
-	// Function untuk format tanggal DD-MM-YYYY
+	// Utility function untuk format tanggal DD-MM-YYYY
 	function formatDate(dateStr) {
 		if (!dateStr) return '-';
 		const date = new Date(dateStr);
@@ -55,6 +75,53 @@
 		const month = String(date.getMonth() + 1).padStart(2, '0');
 		const year = date.getFullYear();
 		return `${day}-${month}-${year}`;
+	}
+
+	// Utility function untuk hitung status pengembalian
+	function calculateReturnStatus(borrowDate, duration, actualReturnDate, returned) {
+		if (!returned) return '-';
+		if (!actualReturnDate) return '-';
+
+		const expectedDate = new Date(borrowDate);
+		expectedDate.setDate(expectedDate.getDate() + duration);
+		const actualDate = new Date(actualReturnDate);
+
+		if (actualDate <= expectedDate) {
+			return { status: 'Tepat Waktu', class: 'bg-green-100 text-green-800' };
+		} else {
+			const diffTime = actualDate - expectedDate;
+			const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+			return {
+				status: `Terlambat (${diffDays} hari)`,
+				class: 'bg-red-100 text-red-800'
+			};
+		}
+	}
+
+	// Utility function untuk hitung tanggal jatuh tempo
+	function calculateDueDate(borrowDate, duration) {
+		if (!borrowDate || !duration) return '-';
+		const date = new Date(borrowDate);
+		date.setDate(date.getDate() + duration);
+		return formatDate(date.toISOString());
+	}
+
+	// Reminder jatuh tempo besok
+	function getReminders(rentals) {
+		const today = new Date();
+		const besok = new Date(today);
+		besok.setDate(today.getDate() + 1);
+
+		return rentals.filter((item) => {
+			if (item.status !== 'Dipinjam') return false;
+			const [day, month, year] = item.tanggalJatuhTempo.split('-');
+			const dueDate = new Date(`${year}-${month}-${day}`);
+			return (
+				dueDate.getFullYear() === besok.getFullYear() &&
+				dueDate.getMonth() === besok.getMonth() &&
+				dueDate.getDate() === besok.getDate()
+			);
+		});
 	}
 
 	// Function untuk mendapatkan status badge class
@@ -224,68 +291,58 @@
 					}
 				}
 			);
+			if (!response.ok) throw new Error('Gagal mengambil data rental dari Directus');
+			const result = await response.json();
 
-			if (!response.ok) {
-				throw new Error('Failed to fetch rentals from Directus');
-			}
-
-			const data = await response.json();
-			console.log('Rentals Data:', data.data); // Debug
-
-			// Map data dari Directus
-			rentals = data.data.map((rental) => ({
-				id: rental.id,
-				barang_id: rental.barang_id?.id || null,
-				barang_nama: rental.barang_id?.Nama || '-',
-				parent_category: rental.barang_id?.parent_category?.parent_category || '-',
-				sub_category: rental.barang_id?.sub_category?.nama_sub || '-',
-				stok_tersedia: rental.barang_id?.StokIn || 0,
-				peminjam: rental.peminjam || '-',
-				departemen: rental.departemen || '-',
-				project: rental.project || '-',
-				qty: rental.qty || 0,
-				satuan: rental.satuan || 'pcs',
-				tanggal_pinjam: rental.tanggal_pinjam,
-				jatuh_tempo: rental.jatuh_tempo,
-				tanggal_kembali: rental.tanggal_kembali,
-				status: rental.status || 'dipinjam',
-				status_pengembalian: rental.status_pengembalian || 'belum_kembali',
-				kondisi: rental.kondisi || 'baik',
-				keterangan: rental.keterangan || '-',
-				// Format tanggal untuk tampilan
-				tanggalPinjam: formatDate(rental.tanggal_pinjam),
-				jatuhTempo: formatDate(rental.jatuh_tempo),
-				tanggalKembali: rental.tanggal_kembali ? formatDate(rental.tanggal_kembali) : '-',
-				durasi: calculateDuration(rental.tanggal_pinjam, rental.tanggal_kembali),
-				// Label untuk status
-				statusPengembalianLabel: getStatusPengembalianLabel(rental.status_pengembalian),
-				// Activity timeline
-				activities: [
-					{
-						action: 'Barang dipinjam',
-						date: formatDate(rental.tanggal_pinjam),
-						user: rental.peminjam || 'Unknown',
-						comment: rental.keterangan || null
-					},
-					...(rental.tanggal_kembali
-						? [
-								{
-									action: 'Barang dikembalikan',
-									date: formatDate(rental.tanggal_kembali),
-									user: rental.peminjam || 'Unknown',
-									comment: `Kondisi: ${rental.kondisi || 'baik'}`
-								}
-							]
-						: [])
-				]
-			}));
-		} catch (err) {
-			console.error('Error fetching rentals:', err);
-			error = err.message;
+			// Map data dan filter status
+			const mapped = (result.data || []).map((item) => {
+				const returnStatus = calculateReturnStatus(
+					item.borrow_date || item.tanggal_pinjam,
+					item.duration || 0,
+					item.actual_return_date || item.tanggal_kembali,
+					item.returned || item.status === 'dikembalikan'
+				);
+				return {
+					id: item.id,
+					nama: item.barang_id?.Nama || '-',
+					kategori: item.barang_id?.parent_category?.parent_category || '-',
+					subKategori: item.barang_id?.sub_category?.nama_sub || '-',
+					qty: item.qty ?? '-',
+					peminjam: item.borrower || item.peminjam || '-',
+					tanggalPinjam: formatDate(item.borrow_date || item.tanggal_pinjam),
+					tanggalJatuhTempo: calculateDueDate(
+						item.borrow_date || item.tanggal_pinjam,
+						item.duration || 0
+					),
+					durasiPinjam: item.duration ? `${item.duration} hari` : '-',
+					tanggalKembaliAktual: item.actual_return_date
+						? formatDate(item.actual_return_date)
+						: item.tanggal_kembali
+							? formatDate(item.tanggal_kembali)
+							: '-',
+					status: item.returned || item.status === 'dikembalikan' ? 'Dikembalikan' : 'Dipinjam',
+					statusPengembalian: returnStatus,
+					kondisiKembali: item.return_condition || item.kondisi || '-',
+					keterangan: item.return_notes || item.keterangan || '-',
+					// Untuk reminder
+					rawBorrowDate: item.borrow_date || item.tanggal_pinjam,
+					rawDuration: item.duration,
+					rawActualReturnDate: item.actual_return_date || item.tanggal_kembali
+				};
+			});
+			// Hanya status approved (dipinjam/dikembalikan)
+			const filtered = mapped.filter(
+				(item) => item.status === 'Dipinjam' || item.status === 'Dikembalikan'
+			);
+			// Update data dan reminder
+			filteredRentals = rentals = filtered;
+			reminders = getReminders(filtered);
+		} catch (e) {
+			error = e.message || 'Gagal mengambil data';
 			rentals = [];
+			filteredRentals = [];
 		} finally {
 			loading = false;
-			filterRentals();
 		}
 	}
 
@@ -301,11 +358,6 @@
 			default:
 				return 'Belum Kembali';
 		}
-	}
-
-	// Function untuk select rental
-	function selectRental(rental) {
-		selectedRental = rental;
 	}
 
 	// Function untuk mengembalikan barang
@@ -350,13 +402,6 @@
 		}
 	}
 
-	// Function untuk menghitung status pengembalian
-	function calculateReturnStatus(jatuhTempo) {
-		const today = new Date();
-		const dueDate = new Date(jatuhTempo);
-		return today <= dueDate ? 'tepat_waktu' : 'terlambat';
-	}
-
 	// Reactive statements
 	$: if (
 		searchTerm !== undefined ||
@@ -371,45 +416,58 @@
 	onMount(() => {
 		fetchRentals();
 	});
+
+	function openDetailModal(item) {
+		selectedItem = item;
+		showDetailModal = true;
+	}
+
+	function closeDetailModal() {
+		showDetailModal = false;
+		selectedItem = null;
+	}
 </script>
 
-<div class="h-screen bg-gray-50 flex flex-col">
-	<!-- Header -->
-	<div class="bg-white border-b border-gray-200 px-6 py-4">
-		<div class="flex justify-between items-center">
-			<div>
-				<h1 class="text-2xl font-bold text-gray-900">Pengajuan Barang</h1>
-				<p class="mt-1 text-sm text-gray-600">
-					Kelola pengajuan peminjaman dan pengembalian barang
-				</p>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+	<!-- Header dengan Filter -->
+	<div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+		<div class="p-6">
+			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+				<div>
+					<h1 class="text-2xl font-bold text-gray-900">Monitoring Peminjaman Barang</h1>
+					<p class="mt-1 text-sm text-gray-600">
+						Status dan monitoring peminjaman serta pengembalian barang
+					</p>
+				</div>
+				<div class="mt-4 sm:mt-0 flex items-center space-x-3">
+					<span class="text-sm text-gray-500">Status:</span>
+					<select
+						class="border border-gray-300 rounded-md px-3 py-2 text-sm"
+						bind:value={statusFilter}
+					>
+						<option value="">Semua Status</option>
+						<option value="dipinjam">Dipinjam</option>
+						<option value="dikembalikan">Dikembalikan</option>
+					</select>
+				</div>
 			</div>
-			<div class="flex space-x-3">
-				<div class="relative group">
+			<!-- Search Bar -->
+			<div class="flex flex-col sm:flex-row gap-4">
+				<div class="flex-1">
+					<input
+						type="text"
+						placeholder="Cari barang, peminjam..."
+						class="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+						bind:value={searchTerm}
+					/>
+				</div>
+				<div class="flex space-x-2">
 					<button
-						type="button"
-						class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+						class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+						on:click={fetchRentals}
 					>
-						📋 Pengajuan Barang
-						<svg
-							class="ml-2 w-4 h-4"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							viewBox="0 0 24 24"
-							><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg
-						>
+						Refresh
 					</button>
-					<div
-						class="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity z-10"
-					>
-						<a href="/inventory/peminjaman" class="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-							>Pinjam Barang</a
-						>
-						<a
-							href="/inventory/pengembalian"
-							class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Pengembalian Barang</a
-						>
-					</div>
 				</div>
 			</div>
 		</div>
@@ -417,447 +475,159 @@
 
 	<!-- Error message -->
 	{#if error}
-		<div class="bg-red-50 border border-red-200 text-red-700 px-6 py-3">
+		<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
 			<p class="text-sm">{error}</p>
 		</div>
 	{/if}
 
-	<div class="flex flex-1 overflow-hidden">
-		<!-- Left Panel - Rental List -->
-		<div class="w-1/2 bg-white border-r border-gray-200 flex flex-col">
-			<!-- Filters -->
-			<div class="p-4 border-b border-gray-200 space-y-4">
-				<!-- Search -->
-				<div>
-					<input
-						type="text"
-						placeholder="Cari nomor rental, nama barang, peminjam..."
-						class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-						bind:value={searchTerm}
-					/>
+	<!-- Reminder jatuh tempo besok -->
+	{#if reminders.length > 0}
+		<div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-md">
+			<strong>Reminder:</strong> Ada {reminders.length} barang rental yang jatuh tempo besok!
+			<ul class="list-disc ml-6 mt-2">
+				{#each reminders as item}
+					<li>{item.nama} ({item.qty}) - Peminjam: {item.peminjam}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
+	<!-- Split Layout: Sidebar + Detail -->
+	<div class="flex flex-col md:flex-row gap-6">
+		<!-- Sidebar: List Card Barang -->
+		<div class="w-full md:w-1/3 max-h-[70vh] overflow-y-auto pr-2">
+			{#if loading}
+				<div class="flex justify-center items-center h-40">
+					<div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
 				</div>
-
-				<!-- Filter Row -->
-				<div class="grid grid-cols-2 gap-3">
-					<select
-						class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-						bind:value={statusFilter}
-					>
-						{#each statusOptions as status}
-							<option value={status.value}>{status.label}</option>
-						{/each}
-					</select>
-
-					<select
-						class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-						bind:value={dateRangeFilter}
-					>
-						{#each dateRangeOptions as dateRange}
-							<option value={dateRange.value}>{dateRange.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div class="grid grid-cols-2 gap-3">
-					<select
-						class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-						bind:value={statusPengembalianFilter}
-					>
-						{#each statusPengembalianOptions as statusPengembalian}
-							<option value={statusPengembalian.value}>{statusPengembalian.label}</option>
-						{/each}
-					</select>
-
-					<select
-						class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-						bind:value={kondisiFilter}
-					>
-						{#each kondisiOptions as kondisi}
-							<option value={kondisi.value}>{kondisi.label}</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-
-			<!-- Table Header -->
-			<div class="border-b border-gray-200 bg-gray-50">
-				<div
-					class="grid grid-cols-12 gap-1 p-2 text-xs font-medium text-gray-600 uppercase tracking-wide"
-				>
-					<div class="col-span-2">Nama Barang</div>
-					<div class="col-span-1">Kategori</div>
-					<div class="col-span-1">Peminjam</div>
-					<div class="col-span-1">Qty</div>
-					<div class="col-span-1">Tgl Pinjam</div>
-					<div class="col-span-1">Jatuh Tempo</div>
-					<div class="col-span-1">Durasi</div>
-					<div class="col-span-1">Tgl Kembali</div>
-					<div class="col-span-1">Status</div>
-					<div class="col-span-1">Status Kembali</div>
-					<div class="col-span-1">Kondisi</div>
-				</div>
-			</div>
-
-			<!-- Rental List -->
-			<div class="flex-1 overflow-y-auto">
-				{#if loading}
-					<div class="flex justify-center items-center h-64">
-						<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-					</div>
-				{:else if filteredRentals.length === 0}
-					<div class="flex flex-col items-center justify-center py-12">
-						<div class="text-4xl mb-2">�</div>
-						<p class="font-medium text-gray-900">Tidak ada data rental</p>
-						<p class="text-sm text-gray-500 mt-1">Belum ada rental barang yang sesuai filter</p>
-					</div>
-				{:else}
-					{#each filteredRentals as rental}
+			{:else if filteredRentals.length === 0}
+				<div class="text-center text-gray-500 py-8">Tidak ada data rental</div>
+			{:else}
+				<div class="space-y-2">
+					{#each filteredRentals as item (item.id)}
 						<div
-							class="grid grid-cols-12 gap-1 p-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors duration-150 text-xs {selectedRental?.id ===
-							rental.id
-								? 'bg-blue-50 border-blue-200'
-								: ''}"
-							on:click={() => selectRental(rental)}
-							role="button"
-							tabindex="0"
-							on:keydown={(e) => e.key === 'Enter' && selectRental(rental)}
+							class="cursor-pointer rounded-lg border px-4 py-3 bg-white shadow-sm flex flex-col gap-1 hover:bg-blue-50 transition {selectedRental &&
+							selectedRental.id === item.id
+								? 'ring-2 ring-blue-400 border-blue-400'
+								: 'border-gray-200'}"
+							on:click={() => selectRental(item)}
 						>
-							<div class="col-span-2 text-gray-900 font-medium truncate" title={rental.barang_nama}>
-								{rental.barang_nama}
-							</div>
-							<div class="col-span-1 text-gray-600 truncate" title={rental.parent_category}>
-								{rental.parent_category}
-							</div>
-							<div class="col-span-1 text-gray-600 truncate" title={rental.peminjam}>
-								{rental.peminjam}
-							</div>
-							<div class="col-span-1 text-gray-600 text-center">
-								{rental.qty}
-							</div>
-							<div class="col-span-1 text-gray-600 text-center">
-								{rental.tanggalPinjam}
-							</div>
-							<div class="col-span-1 text-gray-600 text-center">
-								{rental.jatuhTempo}
-							</div>
-							<div class="col-span-1 text-gray-600 text-center">
-								{rental.durasi}
-							</div>
-							<div class="col-span-1 text-gray-600 text-center">
-								{rental.tanggalKembali}
-							</div>
-							<div class="col-span-1 flex justify-center">
+							<div class="flex items-center justify-between">
+								<span class="font-semibold text-base truncate">{item.nama}</span>
 								<span
-									class="px-1 py-0.5 rounded text-xs font-medium border {getStatusClass(
-										rental.status
-									)}"
+									class="px-2 py-1 rounded text-xs font-bold {item.status === 'Dipinjam'
+										? 'bg-blue-100 text-blue-800'
+										: 'bg-green-100 text-green-800'}">{item.status}</span
 								>
-									{rental.status === 'dipinjam' ? '📤' : '📥'}
-								</span>
 							</div>
-							<div class="col-span-1 flex justify-center">
-								<span
-									class="px-1 py-0.5 rounded text-xs font-medium border {getStatusPengembalianClass(
-										rental.status_pengembalian
-									)}"
-									title={rental.statusPengembalianLabel}
-								>
-									{rental.status_pengembalian === 'tepat_waktu'
-										? '✅'
-										: rental.status_pengembalian === 'terlambat'
-											? '⏰'
-											: '⏳'}
-								</span>
+							<div class="text-xs text-gray-500 truncate">{item.kategori} | {item.peminjam}</div>
+							<div class="flex gap-2 text-xs text-gray-600">
+								<span>Qty: {item.qty}</span>
+								<span>Pinjam: {item.tanggalPinjam}</span>
 							</div>
-							<div class="col-span-1 flex justify-center">
-								<span
-									class="px-1 py-0.5 rounded text-xs font-medium border {getKondisiClass(
-										rental.kondisi
-									)}"
-								>
-									{rental.kondisi === 'baik'
-										? '✅'
-										: rental.kondisi === 'rusak'
-											? '🔧'
-											: rental.kondisi === 'hilang'
-												? '❌'
-												: '⚠️'}
-								</span>
+							<div class="flex gap-2 text-xs text-gray-600">
+								<span>Jatuh Tempo: {item.tanggalJatuhTempo}</span>
 							</div>
 						</div>
 					{/each}
-				{/if}
-			</div>
-		</div>
-
-		<!-- Right Panel - Detail Rental -->
-		<div class="w-1/2 bg-white flex flex-col">
-			{#if selectedRental}
-				<!-- Detail Header -->
-				<div class="p-6 border-b border-gray-200">
-					<div class="flex justify-between items-start mb-4">
-						<div>
-							<h2 class="text-xl font-bold text-gray-900">Rental #{selectedRental.id}</h2>
-							<p class="text-gray-600 mt-1">{selectedRental.barang_nama}</p>
-						</div>
-						<div class="text-right">
-							<span
-								class="inline-block px-3 py-1 rounded-full text-sm font-medium border {getStatusClass(
-									selectedRental.status
-								)}"
-							>
-								{getStatusIcon(selectedRental.status)}
-								{selectedRental.status.replace('_', ' ').toUpperCase()}
-							</span>
-							<div class="mt-2">
-								<span
-									class="inline-block px-2 py-1 rounded-full text-xs font-medium border {getStatusPengembalianClass(
-										selectedRental.status_pengembalian
-									)}"
-								>
-									{selectedRental.statusPengembalianLabel}
-								</span>
-							</div>
-							{#if selectedRental.kondisi !== '-'}
-								<div class="mt-2">
-									<span
-										class="inline-block px-2 py-1 rounded-full text-xs font-medium border {getKondisiClass(
-											selectedRental.kondisi
-										)}"
-									>
-										{selectedRental.kondisi.toUpperCase()}
-									</span>
-								</div>
-							{/if}
-						</div>
-					</div>
-
-					<!-- Action Buttons -->
-					<div class="flex space-x-3">
-						{#if selectedRental.status === 'dipinjam'}
-							<button
-								class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium transition-colors"
-								on:click={() => (showReturnModal = true)}
-							>
-								📥 Terima Pengembalian
-							</button>
-						{/if}
-						<button
-							class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium transition-colors"
-						>
-							🖨️ Cetak Laporan
-						</button>
-					</div>
 				</div>
-
-				<div class="flex-1 overflow-y-auto">
-					<!-- Detail Information -->
-					<div class="p-6 border-b border-gray-200">
-						<h3 class="text-lg font-semibold text-gray-900 mb-4">Informasi Rental</h3>
-						<div class="grid grid-cols-2 gap-4">
-							<div>
-								<div class="text-sm font-medium text-gray-600">Peminjam</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.peminjam}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Departemen</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.departemen}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Project</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.project}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Tanggal Pinjam</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.tanggalPinjam}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Jatuh Tempo</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.jatuhTempo}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Durasi</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.durasi}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Tanggal Kembali</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.tanggalKembali}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Kategori</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.parent_category}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Sub Kategori</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.sub_category}</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Jumlah</div>
-								<div class="text-sm text-gray-900 mt-1">
-									{selectedRental.qty}
-									{selectedRental.satuan}
-								</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Stok Tersedia</div>
-								<div class="text-sm text-gray-900 mt-1">{selectedRental.stok_tersedia} pcs</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Status</div>
-								<div class="text-sm text-gray-900 mt-1">
-									<span
-										class="inline-block px-2 py-1 rounded-full text-xs font-medium border {getStatusClass(
-											selectedRental.status
-										)}"
-									>
-										{selectedRental.status.toUpperCase()}
-									</span>
-								</div>
-							</div>
-							<div>
-								<div class="text-sm font-medium text-gray-600">Kondisi</div>
-								<div class="text-sm text-gray-900 mt-1">
-									{#if selectedRental.kondisi !== '-'}
-										<span
-											class="inline-block px-2 py-1 rounded-full text-xs font-medium border {getKondisiClass(
-												selectedRental.kondisi
-											)}"
-										>
-											{selectedRental.kondisi.toUpperCase()}
-										</span>
-									{:else}
-										-
-									{/if}
-								</div>
-							</div>
+			{/if}
+		</div>
+		<!-- Panel Detail -->
+		<div
+			class="w-full md:w-2/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[300px] flex flex-col justify-center"
+		>
+			{#if selectedRental}
+				<div class="flex flex-col gap-2">
+					<div class="flex items-center gap-3 mb-2">
+						<h2 class="text-xl font-bold">{selectedRental.nama}</h2>
+						<span
+							class="px-2 py-1 rounded text-xs font-bold {selectedRental.status === 'Dipinjam'
+								? 'bg-blue-100 text-blue-800'
+								: 'bg-green-100 text-green-800'}">{selectedRental.status}</span
+						>
+						<span
+							class="px-2 py-1 rounded text-xs font-bold {selectedRental.statusPengembalian?.class}"
+							>{selectedRental.statusPengembalian?.status}</span
+						>
+						<span
+							class="px-2 py-1 rounded text-xs font-bold {selectedRental.kondisiKembali === 'Baik'
+								? 'bg-green-100 text-green-700'
+								: selectedRental.kondisiKembali === 'Rusak'
+									? 'bg-red-100 text-red-700'
+									: 'bg-yellow-100 text-yellow-700'}">{selectedRental.kondisiKembali}</span
+						>
+					</div>
+					<div class="grid grid-cols-2 gap-4 mb-2">
+						<div>
+							<span class="block text-xs text-gray-500">Peminjam</span>
+							<span class="font-medium">{selectedRental.peminjam}</span>
 						</div>
-						{#if selectedRental.keterangan !== '-'}
-							<div class="mt-4">
-								<div class="text-sm font-medium text-gray-600">Keterangan</div>
-								<div class="text-sm text-gray-900 mt-1 bg-gray-50 p-3 rounded-lg">
-									{selectedRental.keterangan}
-								</div>
-							</div>
+						<div>
+							<span class="block text-xs text-gray-500">Qty</span>
+							<span class="font-medium">{selectedRental.qty}</span>
+						</div>
+						<div>
+							<span class="block text-xs text-gray-500">Tanggal Pinjam</span>
+							<span class="font-medium">{selectedRental.tanggalPinjam}</span>
+						</div>
+						<div>
+							<span class="block text-xs text-gray-500">Jatuh Tempo</span>
+							<span class="font-medium">{selectedRental.tanggalJatuhTempo}</span>
+						</div>
+						<div>
+							<span class="block text-xs text-gray-500">Tanggal Kembali</span>
+							<span class="font-medium">{selectedRental.tanggalKembaliAktual}</span>
+						</div>
+					</div>
+					{#if selectedRental.keterangan && selectedRental.keterangan !== '-'}
+						<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-2">
+							<span class="block text-xs text-gray-500 mb-1">Keterangan</span>
+							<span class="text-sm">{selectedRental.keterangan}</span>
+						</div>
+					{/if}
+					<div class="flex gap-2 mt-4">
+						{#if selectedRental.status === 'Dipinjam'}
+							<button
+								class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold"
+								on:click={() => (showReturnModal = true)}>Kembalikan</button
+							>
 						{/if}
-					</div>
-
-					<!-- Status Summary -->
-					<div class="p-6 border-b border-gray-200">
-						<h3 class="text-lg font-semibold text-gray-900 mb-4">Ringkasan Status</h3>
-						<div class="grid grid-cols-3 gap-4">
-							<div class="bg-blue-50 p-4 rounded-lg">
-								<div class="text-sm font-medium text-blue-600">Status Rental</div>
-								<div class="text-lg font-bold text-blue-900 mt-1">
-									{selectedRental.status.toUpperCase()}
-								</div>
-							</div>
-							<div
-								class="p-4 rounded-lg {selectedRental.status_pengembalian === 'tepat_waktu'
-									? 'bg-green-50'
-									: selectedRental.status_pengembalian === 'terlambat'
-										? 'bg-red-50'
-										: 'bg-gray-50'}"
-							>
-								<div
-									class="text-sm font-medium {selectedRental.status_pengembalian === 'tepat_waktu'
-										? 'text-green-600'
-										: selectedRental.status_pengembalian === 'terlambat'
-											? 'text-red-600'
-											: 'text-gray-600'}"
-								>
-									Status Pengembalian
-								</div>
-								<div
-									class="text-lg font-bold mt-1 {selectedRental.status_pengembalian ===
-									'tepat_waktu'
-										? 'text-green-900'
-										: selectedRental.status_pengembalian === 'terlambat'
-											? 'text-red-900'
-											: 'text-gray-900'}"
-								>
-									{selectedRental.statusPengembalianLabel}
-								</div>
-							</div>
-							<div
-								class="p-4 rounded-lg {selectedRental.kondisi === 'baik'
-									? 'bg-green-50'
-									: selectedRental.kondisi === 'rusak' || selectedRental.kondisi === 'hilang'
-										? 'bg-red-50'
-										: 'bg-orange-50'}"
-							>
-								<div
-									class="text-sm font-medium {selectedRental.kondisi === 'baik'
-										? 'text-green-600'
-										: selectedRental.kondisi === 'rusak' || selectedRental.kondisi === 'hilang'
-											? 'text-red-600'
-											: 'text-orange-600'}"
-								>
-									Kondisi
-								</div>
-								<div
-									class="text-lg font-bold mt-1 {selectedRental.kondisi === 'baik'
-										? 'text-green-900'
-										: selectedRental.kondisi === 'rusak' || selectedRental.kondisi === 'hilang'
-											? 'text-red-900'
-											: 'text-orange-900'}"
-								>
-									{selectedRental.kondisi === '-'
-										? 'Belum Dinilai'
-										: selectedRental.kondisi.toUpperCase()}
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Activity Timeline -->
-					<div class="p-6">
-						<h3 class="text-lg font-semibold text-gray-900 mb-4">Riwayat Aktivitas</h3>
-						<div class="space-y-4">
-							{#each selectedRental.activities as activity}
-								<div class="flex">
-									<div class="flex-shrink-0 w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
-									<div class="ml-4 flex-1">
-										<div class="text-sm font-medium text-gray-900">{activity.action}</div>
-										<div class="text-sm text-gray-500">{activity.user} • {activity.date}</div>
-										{#if activity.comment}
-											<div class="text-sm text-gray-700 mt-1 bg-gray-50 p-2 rounded">
-												{activity.comment}
-											</div>
-										{/if}
-									</div>
-								</div>
-							{/each}
-						</div>
 					</div>
 				</div>
 			{:else}
-				<div class="flex flex-col items-center justify-center h-full">
-					<div class="text-4xl mb-4">�</div>
-					<p class="text-lg font-medium text-gray-900">Pilih Rental</p>
-					<p class="text-sm text-gray-500 mt-1">
-						Pilih data rental dari tabel di sebelah kiri untuk melihat detail
-					</p>
+				<div class="flex flex-col items-center justify-center h-full text-gray-400">
+					<svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+						><path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+						/></svg
+					>
+					<p class="text-lg font-medium">Pilih salah satu barang rental untuk melihat detail</p>
 				</div>
 			{/if}
 		</div>
 	</div>
-</div>
 
-<!-- Modal Pengembalian Barang -->
-{#if showReturnModal}
-	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-			<div class="mt-3">
-				<h3 class="text-lg font-medium text-gray-900 mb-4">Konfirmasi Pengembalian Barang</h3>
-				<div class="space-y-4">
-					<div>
-						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-1"
+	<!-- Modal Konfirmasi Pengembalian -->
+	{#if showReturnModal}
+		<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-lg shadow-lg w-full max-w-md">
+				<div class="p-6">
+					<h2 class="text-lg font-bold mb-4">Konfirmasi Pengembalian</h2>
+					<p class="text-sm text-gray-700 mb-4">
+						Anda akan mengembalikan barang <strong>{selectedRental.nama}</strong>.
+					</p>
+					<div class="mb-4">
+						<label for="return-condition" class="block text-xs text-gray-500 mb-1"
 							>Kondisi Barang</label
 						>
 						<select
 							id="return-condition"
 							bind:value={returnCondition}
-							class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+							class="border border-gray-300 rounded-md px-3 py-2 text-sm"
 						>
 							<option value="baik">Baik</option>
 							<option value="rusak">Rusak</option>
@@ -865,80 +635,34 @@
 							<option value="hilang">Hilang</option>
 						</select>
 					</div>
-					<div>
-						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-1"
-							>Keterangan</label
+					<div class="mb-4">
+						<label for="return-comment" class="block text-xs text-gray-500 mb-1"
+							>Keterangan (opsional)</label
 						>
 						<textarea
 							id="return-comment"
-							bind:value={returnComment}
-							placeholder="Tambahkan keterangan (opsional)"
-							class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
 							rows="3"
+							class="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+							bind:value={returnComment}
+							placeholder="Masukkan keterangan pengembalian (jika ada)"
 						></textarea>
 					</div>
-				</div>
-				<div class="flex justify-end space-x-3 mt-6">
-					<button
-						on:click={() => (showReturnModal = false)}
-						class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-					>
-						Batal
-					</button>
-					<button
-						on:click={handleReturnItem}
-						class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-					>
-						Konfirmasi Pengembalian
-					</button>
+					<div class="flex justify-end gap-2">
+						<button
+							class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-400 transition-colors"
+							on:click={() => (showReturnModal = false)}
+						>
+							Batal
+						</button>
+						<button
+							class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+							on:click={handleReturnItem}
+						>
+							Konfirmasi Pengembalian
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>
-	</div>
-{/if}
-
-<style>
-	/* Custom styles for rental system */
-	.rental-item:hover {
-		background-color: #f8fafc;
-	}
-
-	.rental-item.selected {
-		background-color: #dbeafe;
-		border-color: #3b82f6;
-	}
-
-	/* Responsive adjustments */
-	@media (max-width: 768px) {
-		.flex {
-			flex-direction: column;
-		}
-
-		.w-1\/2 {
-			width: 100%;
-		}
-
-		.grid-cols-12 {
-			grid-template-columns: 1fr;
-		}
-
-		.grid-cols-2 {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	/* Smooth transitions */
-	.transition-colors {
-		transition:
-			background-color 0.15s ease-in-out,
-			border-color 0.15s ease-in-out,
-			color 0.15s ease-in-out;
-	}
-
-	/* Table styling */
-	.table-header {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-	}
-</style>
+	{/if}
+</div>

@@ -22,9 +22,9 @@
 	async function loadData() {
 		loading = true;
 		try {
-			// Ambil data dari koleksi Barang (barang di stok)
+			// Ambil data dari koleksi Barang (barang di stok) - Filter hanya SPAREPART
 			const barangResponse = await fetch(
-				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,parent_category.id,parent_category.parent_category,sub_category.id,sub_category.nama_sub&limit=-1',
+				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,parent_category.id,parent_category.parent_category,sub_category.id,sub_category.nama_sub&filter[parent_category][parent_category][_eq]=SPAREPART&limit=-1',
 				{
 					headers: {
 						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
@@ -59,6 +59,7 @@
 			console.log('Barang Data:', barangData.data); // Debug API response
 
 			// Simpan data Barang ke stockedItems dengan penanganan yang lebih baik
+			// Data sudah difilter untuk kategori SPAREPART di level API
 			stockedItems = barangData.data.map((item) => {
 				console.log('Mapping item:', item); // Debug setiap item
 				return {
@@ -69,7 +70,7 @@
 					status: item.Status?.value || item.Status || 'Unknown', // Handle Status sebagai object atau string
 					parent_category:
 						parentCategories.find((cat) => cat.id === item.parent_category?.id)?.parent_category ||
-						'Unknown',
+						'SPAREPART',
 					sub_category:
 						subCategories.find((cat) => cat.id === item.sub_category?.id)?.nama_sub || 'Unknown',
 					// Tambahan: simpan ID kategori dan subkategori untuk kebutuhan edit
@@ -191,14 +192,14 @@
 	<!-- Search Filter - Diperbaiki dengan clear button -->
 	<div class="mb-4">
 		<label for="search-input" class="block text-sm font-medium text-gray-700 mb-2"
-			>Pencarian Barang</label
+			>Pencarian Sparepart</label
 		>
 		<div class="relative">
 			<input
 				id="search-input"
 				type="text"
 				bind:value={searchTerm}
-				placeholder="Cari di semua tabel: nama barang, kategori, departemen, status, deskripsi..."
+				placeholder="Cari sparepart: nama, kategori, sub kategori, deskripsi, status..."
 				class="w-full p-3 pl-10 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 			/>
 			<!-- Search Icon -->
@@ -232,7 +233,8 @@
 		</div>
 		{#if searchTerm}
 			<div class="mt-2 text-sm text-gray-600">
-				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - Barang di Stok: {filteredStockedItems.length}
+				Hasil pencarian untuk: "<span class="font-semibold">{searchTerm}</span>" - Sparepart di
+				Stok: {filteredStockedItems.length}
 			</div>
 		{/if}
 	</div>
@@ -254,8 +256,10 @@
 	<!-- Header -->
 	<div class="sm:flex sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold text-gray-900">Monitoring Stok Barang</h1>
-			<p class="mt-1 text-sm text-gray-600">Monitor dan lihat status stok barang yang tersedia</p>
+			<h1 class="text-2xl font-bold text-gray-900">Monitoring Stok Sparepart</h1>
+			<p class="mt-1 text-sm text-gray-600">
+				Monitor dan lihat status stok sparepart yang tersedia
+			</p>
 		</div>
 		<div class="mt-4 sm:mt-0 flex space-x-3">
 			<div class="relative group">
@@ -305,12 +309,12 @@
 			<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
 		</div>
 	{:else}
-		<!-- Tabel Barang di Stok -->
+		<!-- Tabel Sparepart di Stok -->
 		<div class="mt-6">
 			<div class="flex justify-between items-center mb-4">
-				<h2 class="text-xl font-bold text-gray-900">Barang di Stok</h2>
+				<h2 class="text-xl font-bold text-gray-900">Sparepart di Stok</h2>
 				<div class="text-sm text-gray-600">
-					{filteredStockedItems.length} dari {stockedItems.length} barang
+					{filteredStockedItems.length} dari {stockedItems.length} sparepart
 				</div>
 			</div>
 			{#if filteredStockedItems.length > 0}
@@ -398,7 +402,7 @@
 								(currentStockPage - 1) * stockItemsPerPage + 1,
 								filteredStockedItems.length
 							)} - {Math.min(currentStockPage * stockItemsPerPage, filteredStockedItems.length)} dari
-							{filteredStockedItems.length} barang
+							{filteredStockedItems.length} sparepart
 							{#if searchTerm}
 								<span class="text-blue-600">(hasil pencarian)</span>
 							{/if}
@@ -458,8 +462,8 @@
 					</div>
 					<p class="text-gray-600">
 						{searchTerm
-							? `Tidak ada barang di stok yang cocok dengan pencarian "${searchTerm}"`
-							: 'Tidak ada barang di stok.'}
+							? `Tidak ada sparepart yang cocok dengan pencarian "${searchTerm}"`
+							: 'Tidak ada sparepart di stok.'}
 					</p>
 				</div>
 			{/if}
