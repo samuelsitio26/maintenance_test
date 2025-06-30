@@ -16,23 +16,12 @@
 	let returnCondition = 'baik';
 	let reminders = [];
 	let user = { email: '', role: '', name: '' };
-	let undoTimeouts = {};
-	let undoTimers = {};
-	const UNDO_DURATION = 300000; // 5 menit dalam ms
 	let showDetailModal = false;
 	let detailItem = null;
 
 	onMount(() => {
-		const email = localStorage.getItem('user_email');
-		if (email === 'managerdept@eltama.com') {
-			user = { email, role: 'Manager Dept', name: 'Manager Dept' };
-		} else if (email === 'inventoryadmin@eltama.com') {
-			user = { email, role: 'Inventory Manager', name: 'Inventory Manager' };
-		} else if (email === 'procurementmanager@eltama.com') {
-			user = { email, role: 'Procurement Manager', name: 'Procurement Manager' };
-		} else {
-			user = { email: '', role: '', name: '' };
-		}
+		// Hilangkan role checking - halaman ini hanya untuk menerima approval
+		user = { email: '', role: '', name: '' };
 		fetchRentals();
 	});
 
@@ -118,7 +107,8 @@
 		besok.setDate(today.getDate() + 1);
 
 		return rentals.filter((item) => {
-			if (item.status !== 'Dipinjam') return false;
+			// Hanya barang yang sudah approved tapi belum dikembalikan
+			if (getApprovalStage(item) !== 'done' || item.returned === true) return false;
 			const [day, month, year] = item.tanggalJatuhTempo.split('-');
 			const dueDate = new Date(`${year}-${month}-${day}`);
 			return (
@@ -257,16 +247,20 @@
 
 	// Function untuk mendapatkan label status
 	function getStatusLabel(rental) {
-		// Jika status sudah dikembalikan, return status tersebut
-		if (rental.status === 'Dikembalikan') return 'Dikembalikan';
-		if (rental.status === 'Dipinjam') return 'Dipinjam';
+		// Jika sudah dikembalikan, return status dikembalikan
+		if (rental.returned === true) return 'Dikembalikan';
+
+		// Jika sudah dipinjam (borrowed = true) tapi belum dikembalikan
+		if (rental.borrowed === true && !rental.returned) return 'Dipinjam';
+
+		// Jika belum dipinjam tapi sudah fully approved
+		if (getApprovalStage(rental) === 'done' && !rental.borrowed) return 'Siap Dipinjam';
 
 		// Jika masih proses approval, return status approval
 		const stage = getApprovalStage(rental);
 		if (stage === 'dept') return 'Pending';
 		if (stage === 'inventory') return 'Dept Approved';
 		if (stage === 'procurement') return 'Inventory Approved';
-		if (stage === 'done') return 'Approved';
 
 		return rental.status || 'Pending';
 	}
@@ -280,7 +274,7 @@
 				return 'bg-purple-100 text-purple-800 border-purple-300';
 			case 'inventory approved':
 				return 'bg-indigo-100 text-indigo-800 border-indigo-300';
-			case 'approved':
+			case 'siap dipinjam':
 				return 'bg-green-100 text-green-800 border-green-300';
 			case 'dipinjam':
 				return 'bg-blue-100 text-blue-800 border-blue-300';
@@ -301,37 +295,48 @@
 		return 'dept';
 	}
 
-	// Function untuk check apakah user bisa approve
+	// Function untuk check apakah user bisa approve - DISABLED untuk monitoring only
 	function canApprove(user, rental) {
-		if (!user || !user.role) return false;
-
-		const stage = getApprovalStage(rental);
-
-		if (user.role === 'Manager Dept' && stage === 'dept') return true;
-		if (user.role === 'Inventory Manager' && stage === 'inventory') return true;
-		if (user.role === 'Procurement Manager' && stage === 'procurement') return true;
-
+		// Halaman ini hanya untuk monitoring, tidak bisa approve
 		return false;
 	}
 
-	// Function untuk check apakah bisa undo
-	function canUndo(rental) {
-		return rental.undoUntil && new Date() < rental.undoUntil;
+	// Function untuk check apakah bisa pinjam barang
+	function canBorrow(rental) {
+		// Bisa dipinjam jika sudah fully approved dan belum dipinjam
+		return getApprovalStage(rental) === 'done' && !rental.borrowed;
 	}
 
-	// Function untuk get countdown undo
-	function getUndoCountdown(rental) {
-		if (!rental.undoUntil) return '';
+	// Function untuk check apakah bisa return barang
+	function canReturn(rental) {
+		// Bisa return jika sudah dipinjam dan belum dikembalikan
+		return rental.borrowed === true && !rental.returned;
+	}
 
-		const now = new Date();
-		const timeLeft = rental.undoUntil - now;
+	// Function untuk check apakah bisa return barang (Approval logic)
+	function canReturnApproval(rental) {
+		return (
+			isFullyApproved(rental) &&
+			rental.returned !== true &&
+			getApprovalStatus(rental) === 'Approval'
+		);
+	}
 
-		if (timeLeft <= 0) return '';
+	// Utility function untuk cek apakah sudah approval semua
+	function isFullyApproved(rental) {
+		return (
+			rental.approvals?.dept &&
+			rental.approvals?.inventory &&
+			rental.approvals?.procurement
+		);
+	}
 
-		const minutes = Math.floor(timeLeft / 60000);
-		const seconds = Math.floor((timeLeft % 60000) / 1000);
-
-		return `(${minutes}:${seconds.toString().padStart(2, '0')})`;
+	// Utility function untuk cek status Approval
+	function getApprovalStatus(rental) {
+		if (isFullyApproved(rental) && (rental.status === 'Pending' || rental.status === undefined)) {
+			return 'Approval';
+		}
+		return rental.status;
 	}
 
 	// Function untuk close detail modal
@@ -373,6 +378,8 @@
 	async function fetchRentals() {
 		try {
 			loading = true;
+			console.log('Fetching rental data from Directus...');
+
 			const response = await fetch(
 				'https://directus.eltamaprimaindo.com/items/rentals?fields=*,barang_id.id,barang_id.Nama,barang_id.StokIn,barang_id.parent_category.parent_category,barang_id.sub_category.nama_sub',
 				{
@@ -381,11 +388,11 @@
 					}
 				}
 			);
+
 			if (!response.ok) throw new Error('Gagal mengambil data rental dari Directus');
 			const result = await response.json();
 
-			// Map data dan filter status
-			// Mapping data dari API agar ada approvals dan status approval
+			// Map data langsung dari API tanpa simulasi approval dummy
 			const mapped = (result.data || []).map((item, index) => {
 				const returnStatus = calculateReturnStatus(
 					item.borrow_date || item.tanggal_pinjam,
@@ -394,53 +401,18 @@
 					item.returned || item.status === 'dikembalikan'
 				);
 
-				// Simulasi data approval untuk demo - dalam implementasi nyata, ini akan dari API
-				// Buat lebih realistis: sebagian besar masih pending approval
-				let approvals = {};
-				if (index % 5 === 0) {
-					// Fully approved - hanya 20% data
-					approvals = {
-						dept: {
-							by: 'managerdept@eltama.com',
-							name: 'Manager Dept',
-							at: '2025-06-25T08:00:00Z'
-						},
-						inventory: {
-							by: 'inventoryadmin@eltama.com',
-							name: 'Inventory Manager',
-							at: '2025-06-25T10:30:00Z'
-						},
-						procurement: {
-							by: 'procurementmanager@eltama.com',
-							name: 'Procurement Manager',
-							at: '2025-06-25T14:15:00Z'
-						}
-					};
-				} else if (index % 5 === 1) {
-					// Partially approved sampai inventory - 20% data
-					approvals = {
-						dept: {
-							by: 'managerdept@eltama.com',
-							name: 'Manager Dept',
-							at: '2025-06-26T09:15:00Z'
-						},
-						inventory: {
-							by: 'inventoryadmin@eltama.com',
-							name: 'Inventory Manager',
-							at: '2025-06-26T11:45:00Z'
-						}
-					};
-				} else if (index % 5 === 2) {
-					// Hanya dept approval - 20% data
-					approvals = {
-						dept: {
-							by: 'managerdept@eltama.com',
-							name: 'Manager Dept',
-							at: '2025-06-27T07:30:00Z'
-						}
-					};
+				const approvals = item.approvals || {};
+				const isReturned = item.returned === true || item.actual_return_date;
+				const isBorrowed = item.borrowed === true || item.borrow_date;
+
+				// Logika status Approval
+				let status = item.status;
+				if (
+					approvals.dept && approvals.inventory && approvals.procurement &&
+					(item.status === 'Pending' || item.status === undefined)
+				) {
+					status = 'Approval';
 				}
-				// 40% sisanya tidak ada approval sama sekali (pending)
 
 				return {
 					id: item.id,
@@ -460,28 +432,23 @@
 						: item.tanggal_kembali
 							? formatDate(item.tanggal_kembali)
 							: '-',
-					status:
-						item.returned || item.status === 'dikembalikan'
-							? 'Dikembalikan'
-							: item.status || 'Dipinjam',
+					borrowed: isBorrowed, // Status borrowed (apakah sudah dipinjam)
+					returned: isReturned, // Status returned yang benar
 					statusPengembalian: returnStatus,
 					kondisiKembali: item.return_condition || item.kondisi || '-',
 					keterangan: item.return_notes || item.keterangan || '-',
-					approvals: approvals, // Menggunakan data approval yang sudah disimulasi
-					undoUntil: null,
+					approvals: approvals, // Menggunakan data approval asli dari API
+					status: status, // Simpan status hasil logika Approval
 					// Untuk reminder
 					rawBorrowDate: item.borrow_date || item.tanggal_pinjam,
 					rawDuration: item.duration,
 					rawActualReturnDate: item.actual_return_date || item.tanggal_kembali
 				};
 			});
-			// Hanya status approved (dipinjam/dikembalikan)
-			const filtered = mapped.filter(
-				(item) => item.status === 'Dipinjam' || item.status === 'Dikembalikan'
-			);
+
 			// Update data dan reminder
-			filteredRentals = rentals = filtered;
-			reminders = getReminders(filtered);
+			filteredRentals = rentals = mapped;
+			reminders = getReminders(mapped);
 		} catch (e) {
 			error = e.message || 'Gagal mengambil data';
 			rentals = [];
@@ -547,23 +514,8 @@
 		}
 	}
 
-	function handleUndo(item) {
-		// Batalkan pengembalian
-		const idx = rentals.findIndex((d) => d.id === item.id);
-		if (idx !== -1) {
-			rentals[idx].status = 'Dipinjam';
-			delete rentals[idx].undoUntil;
-			if (undoTimers[item.id]) clearTimeout(undoTimers[item.id]);
-			filterRentals();
-		}
-	}
-
-	function handleReturnWithUndo(item) {
-		selectedRental = item;
-		showReturnModal = true;
-	}
-
-	async function confirmReturnWithUndo() {
+	// Function untuk mengembalikan barang (Approval logic)
+	async function handleReturnApproval() {
 		if (!selectedRental) return;
 		try {
 			const response = await fetch(
@@ -575,33 +527,164 @@
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({
-						status: 'dikembalikan',
-						tanggal_kembali: new Date().toISOString().split('T')[0],
-						kondisi: returnCondition,
-						keterangan_pengembalian: returnComment
+						returned: true,
+						actual_return_date: new Date().toISOString().split('T')[0],
+						return_condition: returnCondition,
+						return_notes: returnComment,
+						status: 'Dikembalikan'
 					})
 				}
 			);
 			if (!response.ok) throw new Error('Gagal mengupdate data pengembalian');
-			// Set undo timer
-			const idx = rentals.findIndex((d) => d.id === selectedRental.id);
-			if (idx !== -1) {
-				rentals[idx].status = 'Dikembalikan';
-				rentals[idx].undoUntil = Date.now() + UNDO_DURATION;
-				if (undoTimers[selectedRental.id]) clearTimeout(undoTimers[selectedRental.id]);
-				undoTimers[selectedRental.id] = setTimeout(() => {
-					const i = rentals.findIndex((d) => d.id === selectedRental.id);
-					if (i !== -1) {
-						delete rentals[i].undoUntil;
-						filterRentals();
-					}
-				}, UNDO_DURATION);
-			}
 			await fetchRentals();
+			selectedRental = null;
 			showReturnModal = false;
 			returnComment = '';
 			returnCondition = 'baik';
 			alert('Barang berhasil dikembalikan!');
+		} catch (err) {
+			console.error('Error returning item:', err);
+			alert('Error: ' + err.message);
+		}
+	}
+
+	function handleBorrow(item) {
+		selectedRental = item;
+		// Bisa langsung execute atau buka modal konfirmasi jika perlu
+		confirmBorrow();
+	}
+
+	async function confirmBorrow() {
+		if (!selectedRental) return;
+		try {
+			// 1. Update status rental menjadi borrowed
+			const response = await fetch(
+				`https://directus.eltamaprimaindo.com/items/rentals/${selectedRental.id}`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						borrowed: true, // Set borrowed menjadi true
+						borrow_date: new Date().toISOString().split('T')[0]
+					})
+				}
+			);
+			if (!response.ok) throw new Error('Gagal mengupdate status peminjaman');
+
+			// 2. Update stok barang di inventory (kurangi qty yang dipinjam)
+			const barangId = selectedRental.barang_id || selectedRental.id; // Sesuaikan dengan struktur data
+			if (barangId && selectedRental.qty) {
+				const barangResponse = await fetch(
+					`https://directus.eltamaprimaindo.com/items/Barang/${barangId}`,
+					{
+						headers: {
+							Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
+						}
+					}
+				);
+
+				if (barangResponse.ok) {
+					const barangData = await barangResponse.json();
+					const currentStock = barangData.data.StokIn || 0;
+					const borrowedQty = parseInt(selectedRental.qty) || 1;
+
+					// Update stok dengan mengurangi qty yang dipinjam
+					const newStock = Math.max(0, currentStock - borrowedQty); // Pastikan tidak negatif
+					await fetch(`https://directus.eltamaprimaindo.com/items/Barang/${barangId}`, {
+						method: 'PATCH',
+						headers: {
+							Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							StokIn: newStock
+						})
+					});
+				}
+			}
+
+			// Refresh data untuk update status
+			await fetchRentals();
+			alert('Barang berhasil dipinjam dan stok inventory telah diperbarui!');
+		} catch (err) {
+			console.error('Error borrowing item:', err);
+			alert('Error: ' + err.message);
+		}
+	}
+
+	function handleUndo(item) {
+		// Tidak lagi dibutuhkan karena sistem approval sudah aman
+		// Function ini bisa dihapus
+		console.log('Undo function disabled - approval system is more secure now');
+	}
+
+	function handleReturnWithUndo(item) {
+		selectedRental = item;
+		showReturnModal = true;
+	}
+
+	async function confirmReturnWithUndo() {
+		if (!selectedRental) return;
+		try {
+			// 1. Update status rental menjadi returned
+			const response = await fetch(
+				`https://directus.eltamaprimaindo.com/items/rentals/${selectedRental.id}`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						returned: true, // Set returned menjadi true
+						actual_return_date: new Date().toISOString().split('T')[0],
+						return_condition: returnCondition,
+						return_notes: returnComment
+					})
+				}
+			);
+			if (!response.ok) throw new Error('Gagal mengupdate data pengembalian');
+
+			// 2. Update stok barang di inventory (tambah kembali qty yang dikembalikan)
+			const barangId = selectedRental.barang_id || selectedRental.id; // Sesuaikan dengan struktur data
+			if (barangId && selectedRental.qty) {
+				const barangResponse = await fetch(
+					`https://directus.eltamaprimaindo.com/items/Barang/${barangId}`,
+					{
+						headers: {
+							Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
+						}
+					}
+				);
+
+				if (barangResponse.ok) {
+					const barangData = await barangResponse.json();
+					const currentStock = barangData.data.StokIn || 0;
+					const returnedQty = parseInt(selectedRental.qty) || 1;
+
+					// Update stok dengan menambahkan qty yang dikembalikan
+					await fetch(`https://directus.eltamaprimaindo.com/items/Barang/${barangId}`, {
+						method: 'PATCH',
+						headers: {
+							Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz',
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							StokIn: currentStock + returnedQty
+						})
+					});
+				}
+			}
+
+			// Refresh data untuk update status
+			await fetchRentals();
+			showReturnModal = false;
+			returnComment = '';
+			returnCondition = 'baik';
+			alert('Barang berhasil dikembalikan dan stok inventory telah diperbarui!');
 		} catch (err) {
 			console.error('Error returning item:', err);
 			alert('Error: ' + err.message);
@@ -688,7 +771,7 @@
 							<option value="Pending">Pending</option>
 							<option value="Dept Approved">Dept Approved</option>
 							<option value="Inventory Approved">Inventory Approved</option>
-							<option value="Approved">Approved</option>
+							<option value="Siap Dipinjam">Siap Dipinjam</option>
 							<option value="Dipinjam">Dipinjam</option>
 							<option value="Dikembalikan">Dikembalikan</option>
 						</select>
@@ -749,12 +832,12 @@
 							style="height:100%; max-height:100%;"
 						>
 							<div
-								class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl shadow-lg border border-blue-200 p-8 flex flex-col gap-6 h-full min-h-[400px] overflow-y-auto max-h-full"
+								class="bg-gradient-to-br from-purple-50 to-pink-100 rounded-2xl shadow-lg border border-purple-200 p-8 flex flex-col gap-6 h-full min-h-[400px] overflow-y-auto max-h-full"
 							>
 								<div class="flex items-center justify-between mb-6">
 									<div class="flex items-center gap-4">
 										<div
-											class="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg"
+											class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-lg"
 										>
 											<svg
 												class="w-6 h-6 text-white"
@@ -1117,88 +1200,11 @@
 												</span>
 											{/if}
 										</div>
-
-										<div class="text-sm text-gray-600 mb-3">
-											<strong>Riwayat Persetujuan:</strong>
-										</div>
-
-										<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-											{#if selectedRental.approvals?.dept}
-												<div class="bg-green-50 border border-green-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-green-800 mb-1">Manager Dept</div>
-													<div class="text-xs text-green-700">
-														{selectedRental.approvals.dept.name}
-													</div>
-													<div class="text-xs text-green-600 mt-1">
-														{formatDate(selectedRental.approvals.dept.at)}
-													</div>
-												</div>
-											{:else}
-												<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-gray-500 mb-1">Manager Dept</div>
-													<div class="text-xs text-gray-400">Menunggu persetujuan</div>
-												</div>
-											{/if}
-
-											{#if selectedRental.approvals?.inventory}
-												<div class="bg-green-50 border border-green-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-green-800 mb-1">
-														Inventory Manager
-													</div>
-													<div class="text-xs text-green-700">
-														{selectedRental.approvals.inventory.name}
-													</div>
-													<div class="text-xs text-green-600 mt-1">
-														{formatDate(selectedRental.approvals.inventory.at)}
-													</div>
-												</div>
-											{:else}
-												<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-gray-500 mb-1">
-														Inventory Manager
-													</div>
-													<div class="text-xs text-gray-400">Menunggu persetujuan</div>
-												</div>
-											{/if}
-
-											{#if selectedRental.approvals?.procurement}
-												<div class="bg-green-50 border border-green-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-green-800 mb-1">
-														Procurement Manager
-													</div>
-													<div class="text-xs text-green-700">
-														{selectedRental.approvals.procurement.name}
-													</div>
-													<div class="text-xs text-green-600 mt-1">
-														{formatDate(selectedRental.approvals.procurement.at)}
-													</div>
-												</div>
-											{:else}
-												<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-													<div class="text-xs font-medium text-gray-500 mb-1">
-														Procurement Manager
-													</div>
-													<div class="text-xs text-gray-400">Menunggu persetujuan</div>
-												</div>
-											{/if}
-										</div>
 									</div>
 									<!-- Tombol Approval/Aksi -->
 									<div class="flex flex-col gap-3 mt-2">
-										{#if canApprove(user, selectedRental) && getApprovalStage(selectedRental) !== 'done'}
-											<button
-												class="w-full px-5 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow text-center"
-												on:click={() => {
-													/* handleApprove(selectedRental) */ alert(
-														'Approve logic belum diimplementasi di file ini!'
-													);
-												}}
-											>
-												✅ Approve Peminjaman
-											</button>
-										{/if}
-
-										{#if selectedRental.status === 'Dipinjam' && getApprovalStage(selectedRental) === 'done'}
+										<!-- Status: Siap Dipinjam (Approved tapi belum dipinjam) -->
+										{#if canBorrow(selectedRental)}
 											<div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
 												<div class="flex items-center gap-2 mb-2">
 													<div
@@ -1213,11 +1219,40 @@
 														</svg>
 													</div>
 													<span class="text-sm font-semibold text-green-800"
-														>Peminjaman Telah Disetujui</span
+														>Siap untuk Dipinjam</span
 													>
 												</div>
 												<div class="text-xs text-green-700">
-													✓ Barang ini telah melalui proses approval lengkap dan dapat dikembalikan
+													✓ Barang telah disetujui dan siap untuk dipinjam
+												</div>
+											</div>
+											<button
+												class="w-full px-5 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow text-center"
+												on:click={() => handleBorrow(selectedRental)}
+											>
+												📤 Pinjam Barang
+											</button>
+										{/if}
+
+										<!-- Status: Dipinjam (Borrowed tapi belum returned) -->
+										{#if canReturn(selectedRental)}
+											<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+												<div class="flex items-center gap-2 mb-2">
+													<div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+														<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+															<path
+																fill-rule="evenodd"
+																d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+																clip-rule="evenodd"
+															/>
+														</svg>
+													</div>
+													<span class="text-sm font-semibold text-blue-800"
+														>Barang Sedang Dipinjam</span
+													>
+												</div>
+												<div class="text-xs text-blue-700">
+													📤 Barang ini sedang dipinjam dan siap untuk dikembalikan
 												</div>
 											</div>
 											<button
@@ -1228,16 +1263,37 @@
 											</button>
 										{/if}
 
-										{#if canUndo(selectedRental)}
+										<!-- Status: Approval (semua approval sudah, status Approval, belum returned) -->
+										{#if canReturnApproval(selectedRental)}
+											<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+												<div class="flex items-center gap-2 mb-2">
+													<div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+														<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+															<path
+																fill-rule="evenodd"
+																d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+																clip-rule="evenodd"
+															/>
+														</svg>
+													</div>
+													<span class="text-sm font-semibold text-blue-800"
+														>Barang Siap Dikembalikan</span
+													>
+												</div>
+												<div class="text-xs text-blue-700">
+													📤 Barang sudah fully approved dan siap dikembalikan
+												</div>
+											</div>
 											<button
-												class="w-full px-5 py-3 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600 transition-colors shadow text-center"
-												on:click={() => handleUndo(selectedRental)}
+												class="w-full px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow text-center"
+												on:click={() => showReturnModal = true}
 											>
-												↩️ Undo Pengembalian {getUndoCountdown(selectedRental)}
+												📦 Kembalikan Barang
 											</button>
 										{/if}
 
-										{#if selectedRental.status === 'Dikembalikan' && !canUndo(selectedRental)}
+										<!-- Status: Dikembalikan -->
+										{#if selectedRental.returned === true}
 											<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
 												<div class="flex items-center gap-2 mb-2">
 													<div
@@ -1252,15 +1308,17 @@
 														</svg>
 													</div>
 													<span class="text-sm font-semibold text-gray-800"
-														>Pengembalian Selesai</span
+														>Barang Sudah Dikembalikan</span
 													>
 												</div>
 												<div class="text-xs text-gray-700">
-													✓ Barang telah dikembalikan dengan status: {selectedRental.kondisiKembali}
+													✓ Barang telah dikembalikan dengan kondisi: {selectedRental.kondisiKembali}
 												</div>
 											</div>
 										{/if}
-										{#if getApprovalStage(selectedRental) !== 'done' && selectedRental.status === 'Dipinjam'}
+
+										<!-- Status: Belum Approved -->
+										{#if getApprovalStage(selectedRental) !== 'done'}
 											<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
 												<div class="flex items-center gap-2 mb-2">
 													<div
@@ -1277,7 +1335,7 @@
 													>
 												</div>
 												<div class="text-xs text-yellow-700">
-													⚠️ Barang belum dapat dikembalikan karena masih dalam proses approval
+													⚠️ Barang belum dapat dipinjam karena masih dalam proses approval
 												</div>
 											</div>
 										{/if}
@@ -1317,19 +1375,14 @@
 </div>
 
 <!-- Modal Pengembalian -->
-{#if showReturnModal && selectedRental}
+{#if showReturnModal && selectedRental && canReturnApproval(selectedRental)}
 	<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
 		<div class="bg-white rounded-2xl shadow-xl max-w-md w-full relative">
 			<div class="p-6">
 				<div class="flex items-center gap-3 mb-4">
 					<div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
 						<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
 						</svg>
 					</div>
 					<div>
@@ -1337,19 +1390,15 @@
 						<p class="text-sm text-gray-600">Kembalikan barang dengan detail berikut</p>
 					</div>
 				</div>
-
 				<div class="bg-gray-50 rounded-xl p-4 mb-4">
 					<div class="text-sm font-medium text-gray-700 mb-2">
 						Barang: <span class="font-bold">{selectedRental.nama}</span>
 					</div>
 					<div class="text-sm text-gray-600">Peminjam: {selectedRental.peminjam}</div>
 				</div>
-
 				<div class="space-y-4">
 					<div>
-						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-2"
-							>Kondisi Barang</label
-						>
+						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-2">Kondisi Barang</label>
 						<select
 							id="return-condition"
 							bind:value={returnCondition}
@@ -1361,11 +1410,8 @@
 							<option value="hilang">Hilang</option>
 						</select>
 					</div>
-
 					<div>
-						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-2"
-							>Keterangan (Opsional)</label
-						>
+						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-2">Keterangan (Opsional)</label>
 						<textarea
 							id="return-comment"
 							bind:value={returnComment}
@@ -1376,20 +1422,11 @@
 					</div>
 				</div>
 			</div>
-
-			<div
-				class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-2xl flex justify-end gap-3"
-			>
-				<button
-					class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-					on:click={() => (showReturnModal = false)}
-				>
+			<div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-2xl flex justify-end gap-3">
+				<button class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors" on:click={() => (showReturnModal = false)}>
 					Batal
 				</button>
-				<button
-					class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-					on:click={confirmReturnWithUndo}
-				>
+				<button class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium" on:click={handleReturnApproval}>
 					Kembalikan
 				</button>
 			</div>
