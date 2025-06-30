@@ -57,7 +57,7 @@
 		loading = true;
 		try {
 			const response = await fetch(
-				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,parent_category.parent_category,sub_category.nama_sub',
+				'https://directus.eltamaprimaindo.com/items/Barang?fields=*,parent_category.parent_category,sub_category.nama_sub&filter[parent_category][parent_category][_eq]=SPAREPART',
 				{
 					headers: {
 						Authorization: 'Bearer JaXaSE93k24zq7T2-vZyu3lgNOUgP8fz'
