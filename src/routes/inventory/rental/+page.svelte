@@ -324,11 +324,7 @@
 
 	// Utility function untuk cek apakah sudah approval semua
 	function isFullyApproved(rental) {
-		return (
-			rental.approvals?.dept &&
-			rental.approvals?.inventory &&
-			rental.approvals?.procurement
-		);
+		return rental.approvals?.dept && rental.approvals?.inventory && rental.approvals?.procurement;
 	}
 
 	// Utility function untuk cek status Approval
@@ -408,7 +404,9 @@
 				// Logika status Approval
 				let status = item.status;
 				if (
-					approvals.dept && approvals.inventory && approvals.procurement &&
+					approvals.dept &&
+					approvals.inventory &&
+					approvals.procurement &&
 					(item.status === 'Pending' || item.status === undefined)
 				) {
 					status = 'Approval';
@@ -1238,7 +1236,9 @@
 										{#if canReturn(selectedRental)}
 											<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
 												<div class="flex items-center gap-2 mb-2">
-													<div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+													<div
+														class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"
+													>
 														<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
 															<path
 																fill-rule="evenodd"
@@ -1267,7 +1267,9 @@
 										{#if canReturnApproval(selectedRental)}
 											<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
 												<div class="flex items-center gap-2 mb-2">
-													<div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+													<div
+														class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"
+													>
 														<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
 															<path
 																fill-rule="evenodd"
@@ -1286,7 +1288,7 @@
 											</div>
 											<button
 												class="w-full px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow text-center"
-												on:click={() => showReturnModal = true}
+												on:click={() => (showReturnModal = true)}
 											>
 												📦 Kembalikan Barang
 											</button>
@@ -1382,7 +1384,12 @@
 				<div class="flex items-center gap-3 mb-4">
 					<div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
 						<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
 						</svg>
 					</div>
 					<div>
@@ -1398,7 +1405,9 @@
 				</div>
 				<div class="space-y-4">
 					<div>
-						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-2">Kondisi Barang</label>
+						<label for="return-condition" class="block text-sm font-medium text-gray-700 mb-2"
+							>Kondisi Barang</label
+						>
 						<select
 							id="return-condition"
 							bind:value={returnCondition}
@@ -1411,7 +1420,9 @@
 						</select>
 					</div>
 					<div>
-						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-2">Keterangan (Opsional)</label>
+						<label for="return-comment" class="block text-sm font-medium text-gray-700 mb-2"
+							>Keterangan (Opsional)</label
+						>
 						<textarea
 							id="return-comment"
 							bind:value={returnComment}
@@ -1422,11 +1433,19 @@
 					</div>
 				</div>
 			</div>
-			<div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-2xl flex justify-end gap-3">
-				<button class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors" on:click={() => (showReturnModal = false)}>
+			<div
+				class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-2xl flex justify-end gap-3"
+			>
+				<button
+					class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+					on:click={() => (showReturnModal = false)}
+				>
 					Batal
 				</button>
-				<button class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium" on:click={handleReturnApproval}>
+				<button
+					class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+					on:click={handleReturnApproval}
+				>
 					Kembalikan
 				</button>
 			</div>
