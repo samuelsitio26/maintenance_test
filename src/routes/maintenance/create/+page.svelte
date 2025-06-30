@@ -56,10 +56,11 @@
     y += 6;
     const progresTitles = [
       'Inspeksi awal kondisi alat',
-      'Pembersihan alat',
-      'Penggantian/Perbaikan komponen',
-      'Pengujian fungsi alat',
-      'Finalisasi & dokumentasi'
+      'Identifikasi masalah dan kerusakan',
+      'Persiapan tools dan spare parts',
+      'Pelaksanaan perbaikan',
+      'Testing dan quality check',
+      'Dokumentasi dan laporan'
     ];
     progresTitles.forEach((title, i) => {
       doc.text(`[  ] Progres ${i + 1}: ${title}`, 18, y);
