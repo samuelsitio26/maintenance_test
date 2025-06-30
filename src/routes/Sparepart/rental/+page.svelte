@@ -763,7 +763,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
             <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">
-                Monitoring Pengembalian Barang
+                Monitoring Sparepart 
             </h1>
             <p class="mt-1 text-sm text-gray-500">Status dan monitoring pengembalian barang rental</p>
         </div>
