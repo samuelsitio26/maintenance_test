@@ -1,5 +1,5 @@
 <script>
-	import { stockStore, stockStats } from '$lib/stores/inventory.js';
+	import { stockStore, stockStats } from '$lib/stores/Sparepart.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
@@ -137,7 +137,7 @@
 			// Redirect setelah 2 detik
 			setTimeout(() => {
 				toast.show = false;
-				goto('/inventory');
+				goto('/Sparepart');
 			}, 2000);
 		} catch (err) {
 			// Tampilkan toast error
@@ -171,7 +171,7 @@
 	}
 
 	function goBack() {
-		goto('/inventory');
+		goto('/Sparepart');
 	}
 </script>
 

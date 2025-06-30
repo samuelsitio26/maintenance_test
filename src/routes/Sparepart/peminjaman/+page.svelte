@@ -303,7 +303,7 @@
 			>
 			<button
 				type="button"
-				on:click={() => (window.history.length > 1 ? window.history.back() : goto('/inventory'))}
+				on:click={() => (window.history.length > 1 ? window.history.back() : goto('/Sparepart'))}
 				class="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
 				disabled={loading}
 			>

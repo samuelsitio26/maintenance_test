@@ -1,5 +1,5 @@
 <script>
-	import { stockStore, stockStats } from '$lib/stores/inventory.js';
+	import { stockStore, stockStats } from '$lib/stores/Sparepart.js';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 
@@ -172,7 +172,7 @@
 			toast = { show: true, message: 'Barang berhasil ditambahkan!', type: 'success' };
 			setTimeout(() => {
 				toast.show = false;
-				goto('/inventory');
+				goto('/Sparepart');
 			}, 2000);
 		} catch (err) {
 			toast = { show: true, message: 'Error: ' + err.message, type: 'error' };
@@ -194,7 +194,7 @@
 	}
 
 	function goBack() {
-		goto('/inventory');
+		goto('/Sparepart');
 	}
 </script>
 
