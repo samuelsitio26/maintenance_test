@@ -854,7 +854,7 @@
        style="height:100%; max-height:100%;"
       >
        <div
-        class="bg-gradient-to-br from-gray-50 to-zinc-400 rounded-2xl shadow-lg border border-gray-200 p-8 flex flex-col gap-6 h-full min-h-[400px] overflow-y-auto max-h-full"
+        class="bg-gradient-to-br from-cyan-100 via-teal-200 to-emerald-300 rounded-2xl shadow-md border border-emerald-200 p-8 flex flex-col gap-6 h-full min-h-[400px] overflow-y-auto max-h-full"
        >
         <div class="flex items-center justify-between mb-6">
          <div class="flex items-center gap-4">
