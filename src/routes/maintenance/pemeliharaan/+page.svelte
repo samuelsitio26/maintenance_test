@@ -129,7 +129,7 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-      <label class="block text-sm font-medium text-gray-700">Alat *</label>
+      <label for="tool" class="block text-sm font-medium text-gray-700">Alat <span class="text-red-500">*</span> <!----></label>
       <input 
         type="text" 
         bind:value={alat} 
@@ -140,7 +140,7 @@
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-gray-700">Interval (hari)</label>
+      <label for="tool" class="block text-sm font-medium text-gray-700">Interval <span class="text-red-500">*</span> <!----></label>
       <input 
         type="number" 
         bind:value={interval} 
@@ -194,8 +194,7 @@
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-gray-700">Jenis Maintenance *</label>
-      <select bind:value={maintenanceType} class="mt-1 block w-full border rounded px-3 py-2 text-sm">
+        <label for="tool" class="block text-sm font-medium text-gray-700">Jenis Maintenance <span class="text-red-500">*</span> <!----></label>      <select bind:value={maintenanceType} class="mt-1 block w-full border rounded px-3 py-2 text-sm">
         <option value="Preventive">Preventive</option>
         <option value="Corrective">Corrective</option>
         <option value="Routine">Routine</option>
@@ -203,7 +202,7 @@
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-gray-700">Status</label>
+      <label for="tool" class="block text-sm font-medium text-gray-700">Status <span class="text-red-500">*</span> <!----></label>
       <select bind:value={status} class="mt-1 block w-full border rounded px-3 py-2 text-sm">
         <option value="Terjadwal">Terjadwal</option>
         <option value="Selesai">Selesai</option>
@@ -221,8 +220,7 @@
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-gray-700">Foto Sebelum Pemeliharaan</label>
-      <input type="file" accept="image/*" on:change={e => beforephoto = e.target.files[0]} class="mt-1 block w-full text-sm" />
+    <label for="tool" class="block text-sm font-medium text-gray-700">Foto Sebelum Pemeliharaan <span class="text-red-500">*</span> <!----></label>      <input type="file" accept="image/*" on:change={e => beforephoto = e.target.files[0]} class="mt-1 block w-full text-sm" />
     </div>
     <div>
       <label class="block text-sm font-medium text-gray-700">Foto Sesudah Pemeliharaan</label>

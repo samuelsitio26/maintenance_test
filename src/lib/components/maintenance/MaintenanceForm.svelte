@@ -526,7 +526,7 @@
       <!-- Project Selection -->
       <div>
         <label for="project" class="block text-sm font-medium text-gray-700">
-          Project <span class="text-red-500">*</span>
+          Project
           {#if preFilledInfo.isAutoFilled && formData.project_id}
             <span class="ml-2 text-xs text-green-600">✓ Otomatis terpilih</span>
           {/if}
@@ -534,11 +534,10 @@
         <select
           id="project"
           bind:value={formData.project_id}
-          required
           disabled={preFilledInfo.isAutoFilled && formData.project_id}
           class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md disabled:bg-gray-50 disabled:text-gray-500"
         >
-          <option value={null}>Pilih Project</option>
+          <option value={null}>Pilih Project (Opsional)</option>
           {#each projects as project}
             <option value={project.id}>
               {project.name} {project.lokasi ? `- ${project.lokasi}` : ''}
@@ -552,6 +551,10 @@
               Ubah manual
             </button>
           </p>
+        {:else}
+          <!-- <p class="mt-1 text-xs text-gray-500">
+            Project tidak wajib diisi. Kosongkan jika maintenance tidak terkait project tertentu.
+          </p> -->
         {/if}
       </div>
   
