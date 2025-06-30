@@ -765,7 +765,7 @@
             <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">
                 Monitoring Sparepart 
             </h1>
-            <p class="mt-1 text-sm text-gray-500">Status dan monitoring pengembalian barang rental</p>
+            <p class="mt-1 text-sm text-gray-500">Status dan monitoring pengembalian barang sparepart</p>
         </div>
         <div class="flex gap-2 mt-4 sm:mt-0">
             <button
