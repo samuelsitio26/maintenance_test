@@ -181,7 +181,7 @@
 				<div class="flex-1 text-sm">
 				<p class="mb-2 font-medium">{notificationMessage}</p>
 				<a
-					href="/inventory/create"
+					href="/Sparepart/create"
 					class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-white bg-blue-600 hover:bg-blue-700 text-sm shadow transition"
 				>
 					➕ Tambah Barang

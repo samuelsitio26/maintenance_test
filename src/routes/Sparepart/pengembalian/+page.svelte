@@ -438,7 +438,7 @@
 			</button>
 			<button
 				type="button"
-				on:click={() => (window.history.length > 1 ? window.history.back() : goto('/inventory'))}
+				on:click={() => (window.history.length > 1 ? window.history.back() : goto('/Sparepart'))}
 				class="bg-gray-300 text-gray-700 px-6 py-2.5 rounded-lg hover:bg-gray-400 focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 transition-colors disabled:opacity-50"
 				disabled={loading}
 			>

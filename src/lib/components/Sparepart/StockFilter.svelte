@@ -1,5 +1,5 @@
 <script>
-    import { stockStore } from '$lib/stores/inventory.js';
+    import { stockStore } from '$lib/stores/Sparepart.js';
 
     let searchTerm = '';
     let selectedCategory = 'Semua';

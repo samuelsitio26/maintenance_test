@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
-	import StockStats from '$lib/components/inventory/StockStats.svelte';
-	import { stockStore, stockStats } from '$lib/stores/inventory.js';
+	import StockStats from '$lib/components/Sparepart/StockStats.svelte';
+	import { stockStore, stockStats } from '$lib/stores/Sparepart.js';
 
 	let loading = false;
 	let error = null;
@@ -262,32 +262,13 @@
 			</p>
 		</div>
 		<div class="mt-4 sm:mt-0 flex space-x-3">
-			<div class="relative group">
-				<button
-					type="button"
-					class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-				>
-					📋 Pengajuan Barang
-					<svg
-						class="ml-2 w-4 h-4"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						viewBox="0 0 24 24"
-						><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg
-					>
-				</button>
-				<div
-					class="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity z-10"
-				>
-					<a href="/inventory/peminjaman" class="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-						>Pinjam Barang</a
-					>
-					<a href="/inventory/pengembalian" class="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-						>Pengembalian Barang</a
-					>
-				</div>
-			</div>
+			<!-- Ubah tombol pengajuan barang menjadi langsung ke /Sparepart/peminjaman -->
+			<a
+				href="/Sparepart/peminjaman"
+				class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+			>
+				📋 Pengajuan Barang
+			</a>
 		</div>
 	</div>
 
