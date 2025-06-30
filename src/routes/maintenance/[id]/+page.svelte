@@ -187,7 +187,7 @@
                     </span>
                 {/if}
                 
-                <button
+                <!-- <button
                     on:click={() => saveProgress(false)}
                     disabled={saving || !hasUnsavedChanges}
                     class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -198,7 +198,7 @@
                     {:else}
                         💾 Simpan Progress
                     {/if}
-                </button>
+                </button> -->
                 
                 <button
                     on:click={() => goto('/maintenance')}
@@ -308,8 +308,8 @@
         </div>
 
         <!-- Progress Checklist -->
-        <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center justify-between mb-4">
+        <!-- <div class="bg-white rounded-lg shadow p-6"> -->
+            <!-- <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-medium text-gray-900">Update Progress Maintenance</h2>
                 <div class="text-sm text-gray-500">
                     {#if hasUnsavedChanges}
@@ -319,28 +319,28 @@
                     {/if}
                     | 💾 Auto-save setiap 30 detik
                 </div>
-            </div>
+            </div> -->
             
-            <ProgressChecklist 
+            <!-- <ProgressChecklist 
                 bind:progressItems={progressItems}
                 on:progress-change={handleProgressChange}
                 readonly={false}
-            />
-        </div>
+            /> -->
+        <!-- </div> -->
 
         <!-- Quick Actions -->
         <div class="bg-white rounded-lg shadow p-6">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Aksi Cepat</h3>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button
+                <!-- <button
                     on:click={() => saveProgress(false)}
                     disabled={saving || !hasUnsavedChanges}
                     class="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     💾 Simpan Progress
                 </button>
-                
+                 -->
                 <button
                     on:click={() => goto(`/maintenance/${maintenanceId}/progress`)}
                     class="flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
