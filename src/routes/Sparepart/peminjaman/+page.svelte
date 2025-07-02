@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import AuthGuard from '$lib/components/common/AuthGuard.svelte';
 
 	let form = {
 		itemId: '',
@@ -184,8 +185,9 @@
 	$: returnDate = formatDateMDY(returnDateRaw);
 </script>
 
+<AuthGuard requireMaintenanceAccess={true}>
 <div class="space-y-6 p-6 bg-white-100 min-h-screen">
-	<h1 class="text-2xl font-bold text-gray-900">Peminjaman Barang</h1>
+	<h1 class="text-2xl font-bold text-gray-900">Permintaan Sparepart</h1>
 	<form on:submit|preventDefault={handleSubmit} class="bg-white rounded-lg shadow p-6 space-y-4">
 		<div class="relative" bind:this={dropdownRef}>
 			<label class="block text-sm font-medium text-gray-700 mb-1.5">Nama Barang</label>
@@ -254,7 +256,7 @@
 			</div>
 		{/if}
 		<div>
-			<label class="block text-sm font-medium text-gray-700">Peminjam</label>
+			<label class="block text-sm font-medium text-gray-700">Pengaju</label>
 			<input
 				type="text"
 				bind:value={form.borrower}
@@ -265,7 +267,7 @@
 		</div>
 		<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 			<div>
-				<label class="block text-sm font-medium text-gray-700">Tanggal Peminjaman</label>
+				<label class="block text-sm font-medium text-gray-700">Tanggal Pengajuan</label>
 				<input
 					type="date"
 					bind:value={form.borrowDate}
@@ -312,3 +314,4 @@
 		</div>
 	</form>
 </div>
+</AuthGuard>

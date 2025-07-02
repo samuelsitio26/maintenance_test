@@ -4,6 +4,7 @@
   import { projectToolsService } from '$lib/services/projectTools.js';
   import ProblematicTools from '$lib/components/maintenance/ProblematicTools.svelte';
   import ConditionBadge from '$lib/components/common/ConditionBadge.svelte';
+  import { isAuthenticated, user } from '$lib/stores/auth.js';
   
   let conditionSummary = {
       total: 0,
@@ -94,6 +95,25 @@
           <p class="mt-1 text-sm text-gray-600">
               Ringkasan kondisi alat PT Eltama Prima Indo
           </p>
+          {#if $isAuthenticated}
+              <div class="mt-2 flex items-center space-x-2">
+                  <span class="text-sm text-gray-500">Status:</span>
+                  <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      Login sebagai {$user?.nama_lengkap || $user?.email}
+                  </span>
+                  {#if $user?.role === 'maintenanceadmin'}
+                      <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                          🔧 Maintenance Admin Access
+                      </span>
+                  {/if}
+              </div>
+          {:else}
+              <div class="mt-2">
+                  <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
+                      Tidak login - Akses terbatas
+                  </span>
+              </div>
+          {/if}
       </div>
       
       <div class="mt-4 md:mt-0">

@@ -2,8 +2,10 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { maintenanceStore } from '$lib/stores/maintenance.js';
+  import { user, hasMaintenanceAccess } from '$lib/stores/auth.js';
   import { goto } from '$app/navigation';
   import ProgressChecklist from '$lib/components/maintenance/ProgressChecklist.svelte';
+  import AuthGuard from '$lib/components/common/AuthGuard.svelte';
 
   let maintenance = null;
   let loading = true;
@@ -97,15 +99,21 @@
       loading = false;
     }
   }
+
+  // Check if current user is Maintenance Admin
+  function isMaintenanceAdmin() {
+    return $user && hasMaintenanceAccess($user.role);
+  }
 </script>
 
-<div class="max-w-2xl mx-auto">
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">Update Data & Progress Maintenance</h1>
-    <p class="mt-1 text-sm text-gray-600">
-      Perbarui informasi maintenance, assignment, target selesai, dan progress.
-    </p>
-  </div>
+<AuthGuard requireMaintenanceAccess={true}>
+  <div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-gray-900">Update Data & Progress Maintenance</h1>
+      <p class="mt-1 text-sm text-gray-600">
+        Perbarui informasi maintenance, assignment, target selesai, dan progress.
+      </p>
+    </div>
 
   <div class="bg-white rounded-lg shadow p-6">
     {#if loading}
@@ -203,4 +211,4 @@
       {/if}
     {/if}
   </div>
-</div>
+</AuthGuard>

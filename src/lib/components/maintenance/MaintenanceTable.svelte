@@ -1,6 +1,7 @@
 <!-- src/lib/components/maintenance/MaintenanceTable.svelte -->
 <script>
   import { maintenanceStore } from '$lib/stores/maintenance.js';
+  import { user, hasMaintenanceAccess } from '$lib/stores/auth.js';
   import StatusBadge from '../common/StatusBadge.svelte';
   import ProgressChecklist from './ProgressChecklist.svelte';
   import { slide } from 'svelte/transition';
@@ -84,6 +85,16 @@
   // Check if maintenance can be updated (not completed)
   function canUpdateProgress(status) {
     return status !== 'completed';
+  }
+
+  // Check if current user is Maintenance Admin
+  function isMaintenanceAdmin() {
+    return $user && hasMaintenanceAccess($user.role);
+  }
+
+  // Check if user can access progress update (Maintenance Admin only)
+  function canAccessProgress(status) {
+    return canUpdateProgress(status) && isMaintenanceAdmin();
   }
 
   // Helper function to get progress data for item
@@ -335,7 +346,7 @@
                   </button>
                 </div>
                 <!-- Update Progress Button -->
-                {#if canUpdateProgress(item.status)}
+                {#if canAccessProgress(item.status)}
                   <button
                     on:click={() => handleUpdateProgress(item.id)}
                     class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -373,7 +384,7 @@
                     <h4 class="text-sm font-medium text-gray-900">
                       Detail Progress Maintenance
                     </h4>
-                    {#if canUpdateProgress(item.status)}
+                    {#if canAccessProgress(item.status)}
                       <button
                         on:click={() => handleUpdateProgress(item.id)}
                         class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"

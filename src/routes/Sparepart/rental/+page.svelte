@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import AuthGuard from '$lib/components/common/AuthGuard.svelte';
 
 	let rentals = [];
 	let filteredRentals = [];
@@ -319,7 +320,6 @@
 		const stage = getApprovalStage(rental);
 		if (stage === 'dept') return 'Pending';
 		if (stage === 'inventory') return 'Dept Approved';
-		if (stage === 'procurement') return 'Inventory Approved';
 
 		return rental.status || 'Pending';
 	}
@@ -331,8 +331,6 @@
 				return 'bg-yellow-100 text-yellow-800 border-yellow-300';
 			case 'dept approved':
 				return 'bg-purple-100 text-purple-800 border-purple-300';
-			case 'inventory approved':
-				return 'bg-indigo-100 text-indigo-800 border-indigo-300';
 			case 'siap dipinjam':
 				return 'bg-green-100 text-green-800 border-green-300';
 			case 'dipinjam':
@@ -348,8 +346,8 @@
 	function getApprovalStage(rental) {
 		if (!rental.approvals) return 'none';
 
-		if (rental.approvals.procurement) return 'done';
-		if (rental.approvals.inventory) return 'procurement';
+		// Alur persetujuan baru: hanya Manager Dept dan Inventory Manager
+		if (rental.approvals.inventory) return 'done';
 		if (rental.approvals.dept) return 'inventory';
 		return 'dept';
 	}
@@ -383,7 +381,15 @@
 
 	// Utility function untuk cek apakah sudah approval semua
 	function isFullyApproved(rental) {
-		return rental.approvals?.dept && rental.approvals?.inventory && rental.approvals?.procurement;
+		// Persetujuan lengkap hanya perlu dept dan inventory saja
+		const result = rental.approvals?.dept && rental.approvals?.inventory;
+		console.log('isFullyApproved check:', {
+			id: rental.id,
+			nama: rental.nama,
+			approvals: rental.approvals,
+			result: result
+		});
+		return result;
 	}
 
 	// Utility function untuk cek status Approval
@@ -460,15 +466,24 @@
 				const isReturned = item.returned === true || item.actual_return_date;
 				const isBorrowed = item.borrowed === true || item.borrow_date;
 
-				// Logika status Approval
+				// Logika status Approval - hanya perlu dept dan inventory
 				let status = item.status;
 				if (
 					approvals.dept &&
 					approvals.inventory &&
-					approvals.procurement &&
 					(item.status === 'Pending' || item.status === undefined)
 				) {
 					status = 'Approval';
+				}
+
+				// Debug log untuk approval data
+				if (approvals.dept && approvals.inventory) {
+					console.log('Item fully approved:', {
+						id: item.id,
+						nama: item.barang_id?.Nama,
+						approvals: approvals,
+						status: status
+					});
 				}
 
 				return {
@@ -769,6 +784,7 @@
 	});
 </script>
 
+<AuthGuard requireMaintenanceAccess={true}>
 <div
 	class="mx-auto px-4 py-8"
 	style="max-width:1600px; font-size:1.1rem; margin-left:-50px; margin-right:-50px;"
@@ -825,7 +841,6 @@
 							<option value="">Semua Status</option>
 							<option value="Pending">Pending</option>
 							<option value="Dept Approved">Dept Approved</option>
-							<option value="Inventory Approved">Inventory Approved</option>
 							<option value="Siap Dipinjam">Siap Dipinjam</option>
 							<option value="Dipinjam">Dipinjam</option>
 							<option value="Dikembalikan">Dikembalikan</option>
@@ -1128,10 +1143,8 @@
 											class="absolute top-1/2 left-0 h-0.5 bg-green-500 transform -translate-y-1/2 z-0 transition-all duration-500"
 											style="width: {selectedRental.approvals?.dept
 												? selectedRental.approvals?.inventory
-													? selectedRental.approvals?.procurement
-														? '100%'
-														: '66%'
-													: '33%'
+													? '100%'
+													: '50%'
 												: '0%'}"
 										></div>
 
@@ -1192,41 +1205,6 @@
 												<span class="text-xs text-gray-400 text-center mt-1">Pending</span>
 											{/if}
 										</div>
-
-										<!-- Arrow 2 -->
-										<div class="flex-1 flex justify-center">
-											<svg class="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-												<path
-													fill-rule="evenodd"
-													d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-													clip-rule="evenodd"
-												></path>
-											</svg>
-										</div>
-
-										<!-- Step 3: Procurement Manager -->
-										<div
-											class="flex flex-col items-center relative z-10 bg-blue-50 px-3 py-2 rounded-lg"
-										>
-											<div
-												class="w-8 h-8 rounded-full flex items-center justify-center {selectedRental
-													.approvals?.procurement
-													? 'bg-green-500 text-white'
-													: 'bg-gray-300 text-gray-500'} font-bold text-sm shadow-sm mb-2 transition-colors duration-300"
-											>
-												3
-											</div>
-											<span class="text-xs font-medium text-center text-gray-700"
-												>Procurement Manager</span
-											>
-											{#if selectedRental.approvals?.procurement}
-												<span class="text-xs text-green-600 text-center mt-1"
-													>{formatDate(selectedRental.approvals.procurement.at)}</span
-												>
-											{:else}
-												<span class="text-xs text-gray-400 text-center mt-1">Pending</span>
-											{/if}
-										</div>
 									</div>
 								</div>
 
@@ -1245,7 +1223,7 @@
 												<span
 													class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300"
 												>
-													✅ Fully Approved
+													✅ Siap Dipinjam
 												</span>
 											{:else}
 												<span
@@ -1340,7 +1318,7 @@
 													>
 												</div>
 												<div class="text-xs text-blue-700">
-													📤 Barang sudah fully approved dan siap dikembalikan
+													📤 Barang sudah disetujui dan siap dikembalikan
 												</div>
 											</div>
 											<button
@@ -1432,6 +1410,7 @@
 		</div>
 	</div>
 </div>
+</AuthGuard>
 
 <!-- Modal Pengembalian -->
 {#if showReturnModal && selectedRental && canReturnApproval(selectedRental)}

@@ -22,6 +22,8 @@
   let loading = true;
   let error = null;
   let updating = {};
+  let editingToolName = {}; // Track which tool names are being edited
+  let successMessage = null; // Success message display
   
   // Filter state
   let searchQuery = '';
@@ -337,6 +339,111 @@
       delete updating[item.id];
       updating = { ...updating };
     }
+  }
+
+  // Update tool name
+  async function updateToolName(toolId, newName) {
+    if (!newName || newName.trim() === '') {
+      error = 'Nama alat tidak boleh kosong';
+      return false;
+    }
+
+    if (updating[`tool_${toolId}`]) return false; // Prevent double-updates
+    
+    updating[`tool_${toolId}`] = true;
+    updating = { ...updating };
+    
+    try {
+      // Update tool name via API
+      await toolsService.update(toolId, {
+        name: newName.trim()
+      });
+      
+      // Update local data immediately for better UX
+      const toolIndex = tools.findIndex(t => t.id === toolId);
+      if (toolIndex !== -1) {
+        tools[toolIndex].name = newName.trim();
+        tools = [...tools]; // Trigger reactivity
+        
+        // Update combined data as well
+        combinedData.forEach(item => {
+          if (item.tool?.id === toolId) {
+            item.tool.name = newName.trim();
+          }
+        });
+        combinedData = [...combinedData]; // Trigger reactivity
+      }
+      
+      // Clear editing state
+      delete editingToolName[toolId];
+      editingToolName = { ...editingToolName };
+      
+      // Show success message
+      successMessage = `Nama alat berhasil diubah menjadi "${newName.trim()}"`;
+      setTimeout(() => {
+        successMessage = null;
+      }, 3000);
+      
+      // Show success feedback briefly
+      setTimeout(() => {
+        delete updating[`tool_${toolId}`];
+        updating = { ...updating };
+      }, 1000);
+      
+      return true;
+      
+    } catch (err) {
+      error = err.message || 'Gagal mengupdate nama alat';
+      console.error('Error updating tool name:', err);
+      
+      delete updating[`tool_${toolId}`];
+      updating = { ...updating };
+      return false;
+    }
+  }
+
+  // Handle tool name edit
+  function startEditingToolName(toolId, currentName) {
+    editingToolName[toolId] = currentName;
+    editingToolName = { ...editingToolName };
+    // Clear any existing error/success messages
+    error = null;
+    successMessage = null;
+  }
+
+  // Cancel tool name edit
+  function cancelEditingToolName(toolId) {
+    delete editingToolName[toolId];
+    editingToolName = { ...editingToolName };
+  }
+
+  // Handle tool name save on Enter or blur
+  async function handleToolNameSave(toolId, event) {
+    const newName = event.target.value;
+    const success = await updateToolName(toolId, newName);
+    if (!success) {
+      // Reset to original name if update failed
+      const tool = tools.find(t => t.id === toolId);
+      if (tool) {
+        editingToolName[toolId] = tool.name;
+        editingToolName = { ...editingToolName };
+      }
+    }
+  }
+
+  // Handle keydown events for tool name editing
+  function handleToolNameKeydown(toolId, event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleToolNameSave(toolId, event);
+    } else if (event.key === 'Escape') {
+      cancelEditingToolName(toolId);
+    }
+  }
+
+  // Action to focus an element
+  function focus(node) {
+    node.focus();
   }
   
   // Create maintenance for a tool
@@ -659,6 +766,20 @@
     </div>
   {/if}
 
+  <!-- Success Message -->
+  {#if successMessage}
+    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md" transition:slide>
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <span class="text-green-400">✅</span>
+        </div>
+        <div class="ml-3">
+          <p class="text-sm">{successMessage}</p>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Tools Table -->
   <div class="bg-white shadow overflow-hidden sm:rounded-lg">
     {#if loading}
@@ -713,7 +834,49 @@
                 <tr>
                   <!-- Nama Alat -->
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">{t.tool.name}
+                    <div class="text-sm font-medium text-gray-900">
+                      {#if editingToolName[t.tool.id] !== undefined}
+                        <!-- Edit mode -->
+                        <div class="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            bind:value={editingToolName[t.tool.id]}
+                            on:blur={(e) => handleToolNameSave(t.tool.id, e)}
+                            on:keydown={(e) => handleToolNameKeydown(t.tool.id, e)}
+                            class="flex-1 text-sm border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            class:animate-pulse={updating[`tool_${t.tool.id}`]}
+                            disabled={updating[`tool_${t.tool.id}`]}
+                            use:focus
+                          />
+                          <button
+                            on:click={() => cancelEditingToolName(t.tool.id)}
+                            class="text-gray-400 hover:text-gray-600 text-xs"
+                            disabled={updating[`tool_${t.tool.id}`]}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      {:else}
+                        <!-- Display mode -->
+                        <div class="flex items-center group">
+                          <button 
+                            type="button"
+                            class="text-left cursor-pointer hover:text-blue-600 transition-colors focus:outline-none focus:text-blue-600" 
+                            on:click={() => startEditingToolName(t.tool.id, t.tool.name)}
+                            title="Klik untuk mengedit nama alat">
+                            {t.tool.name}
+                          </button>
+                          <button
+                            type="button"
+                            on:click={() => startEditingToolName(t.tool.id, t.tool.name)}
+                            class="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600 text-xs focus:outline-none focus:opacity-100"
+                            title="Edit nama alat"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      {/if}
+                      
                       {#if t.projects.length > 0}
                         <details class="relative inline-block ml-2 group">
                           <summary class="text-xs text-blue-600 hover:text-blue-800 cursor-pointer focus:outline-none">
@@ -866,14 +1029,6 @@
 </div>
 
 <style>
-  /* Custom row background colors for conditions */
-  .bg-red-25 {
-    background-color: rgba(254, 242, 242, 0.5);
-  }
-  .bg-yellow-25 {
-    background-color: rgba(255, 251, 235, 0.5);
-  }
-  
   /* Smooth transitions */
   .transition-colors {
     transition: background-color 0.2s ease-in-out;

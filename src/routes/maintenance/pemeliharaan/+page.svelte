@@ -1,6 +1,7 @@
 <script>
   import { pemeliharaanService } from '$lib/services/pemeliharaan.js';
   import { goto } from '$app/navigation';
+  import AuthGuard from '$lib/components/common/AuthGuard.svelte';
 
   let alat = '';
   let interval = '';
@@ -123,9 +124,10 @@
   }
 </script>
 
-<div class="p-6 bg-white rounded shadow-md max-w-3xl mx-auto mt-8">
-  <h2 class="text-xl font-bold mb-2">Tambah Jadwal Pemeliharaan</h2>
-  <p class="text-sm text-gray-600 mb-6">Tambahkan data pemeliharaan alat terjadwal</p>
+<AuthGuard requireMaintenanceAccess={true}>
+  <div class="p-6 bg-white rounded shadow-md max-w-3xl mx-auto mt-8">
+    <h2 class="text-xl font-bold mb-2">Tambah Jadwal Pemeliharaan</h2>
+    <p class="text-sm text-gray-600 mb-6">Tambahkan data pemeliharaan alat terjadwal</p>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
@@ -257,3 +259,4 @@
     </button>
   </div>
 </div>
+</AuthGuard>
